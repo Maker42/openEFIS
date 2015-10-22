@@ -1,0 +1,8 @@
+StraightAndLevel(20)
+PIDOptimizationStart("flight.climb_pitch")
+PIDOptimizationNext()
+PIDOptimizationNext()
+PIDOptimizationNext()
+PIDOptimizationNext()
+Turn(45.0, 30.0, 10000)
+StraightAndLevel(10)
