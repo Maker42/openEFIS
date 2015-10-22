@@ -1,0 +1,6 @@
+Turn(45.0, 20.0, 10000)
+PIDOptimizationStart("flight.throttle")
+PIDOptimizationNext()
+PIDOptimizationNext()
+PIDOptimizationNext()
+Turn(45.0, 20.0, 10000)

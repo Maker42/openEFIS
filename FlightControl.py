@@ -282,12 +282,14 @@ class FlightControl(FileConfig.FileConfig):
         if self._journal_file:
             self._journal_file.write(str(ms))
         if self._throttlePID.GetMode() == PID.AUTOMATIC:
-            if self._pid_optimization_goal != "throtle":
+            if self._pid_optimization_goal != "throttle":
                 self._throttlePID.SetSetPoint (self.DesiredAirSpeed)
             th = self._throttlePID.Compute (self.CurrentAirSpeed, ms)
-            if self._journal_file and self.JournalThrottle:
-                self._journal_file.write(",%g,%g,%g"%(self.DesiredAirSpeed, self.CurrentAirSpeed, th))
-            self._throttle_control.Set(th)
+        if self._in_pid_optimization == "throttle":
+            self._pid_optimization_scoring.IncrementScore(self.CurrentAirSpeed, th, self._pid_optimization_goal, self._journal_file)
+        if self._journal_file and self.JournalThrottle:
+            self._journal_file.write(",%g,%g,%g"%(self.DesiredAirSpeed, self.CurrentAirSpeed, th))
+        self._throttle_control.Set(th)
 
         self.CurrentAltitude = self._sensors.Altitude()
         self._desired_climb_rate = self.get_climb_rate()

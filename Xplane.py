@@ -34,12 +34,17 @@ class XplaneControl:
                 ("sim/joystick/yoke_pitch_ratio", "YokePitch", (-1.0, 1.0)), #	The deflection of the joystick axis controlling pitch. Use override_joystick or override_joystick_pitch
                 ("sim/joystick/yoke_roll_ratio", "YokeRoll", (-1.0, 1.0)),  #	The deflection of the joystick axis controlling roll. Use override_joystick or override_joystick_roll
                 ("sim/joystick/yoke_heading_ratio", "Yaw", (-1.0, 1.0)),   #	The deflection of the joystick axis controlling yaw. Use override_joystick or override_joystick_heading
-                ("sim/flightmodel/engine/ENGN_thro", "Throttle", (0.0, 1.0)),  #	y	ratio	Throttle (per engine) as set by user, 0 = idle, 1 = max
+                ("sim/flightmodel/engine/ENGN_thro_override", "Throttle", (0.0, 1.0)),  #	y	ratio	Throttle (per engine) as set by user, 0 = idle, 1 = max
                 ]
         self.dref_struct_preamble = struct.pack("5s", "DREF")
         self.dref_struct_body = struct.Struct("f500s")
+
         override_joystick = self.dref_struct_preamble + self.dref_struct_body.pack(1.0, "sim/operation/override/override_joystick")
         self.sock.sendto (override_joystick, (self.xplane_host, self.xplane_port))
+
+        override_throttle = self.dref_struct_preamble + self.dref_struct_body.pack(1.0, "sim/operation/override/override_throttles")
+        self.sock.sendto (override_throttle, (self.xplane_host, self.xplane_port))
+
         set_zero = [
                         "sim/joystick/joystick_pitch_nullzone",
                         "sim/joystick/joystick_roll_nullzone",
