@@ -34,11 +34,6 @@ class AttitudeControl(FileConfig.FileConfig):
         self.JournalYaw = False
         self.JournalFileName = ''
 
-        # For scoring PID performance. Only turn on one at a time
-        self.ScorePitch = False
-        self.ScoreRoll = False
-        self.ScoreYaw = False
-
         # Current State properties
         self.CurrentPitch = 0
         self.CurrentRoll = 0
@@ -79,7 +74,6 @@ class AttitudeControl(FileConfig.FileConfig):
         self.RollRatePIDTuningParams = list()
 
         self.AttitudeAchievementSeconds = 3.0
-        self.MinRollRate = 3.0 # degrees per second
         self.MaxRollRate = 7.0 # degrees per second
 
         self.RudderAileronRatio = .2
@@ -110,14 +104,14 @@ class AttitudeControl(FileConfig.FileConfig):
 
         self._current_airspeed_index = self.get_airspeed_index()
         kp,ki,kd = self.GetTunings (self.PitchPIDTuningParams)
-        ms = util.millis()
+        ms = util.millis(self._sensors.Time())
         self._pitchPID = PID.PID(0, kp, ki, kd, PID.DIRECT, ms)
 
         kp,ki,kd = self.GetTunings (self.YawPIDTuningParams)
-        self._yawPID = PID.PID(0, kp, ki, kd, PID.DIRECT, util.millis())
+        self._yawPID = PID.PID(0, kp, ki, kd, PID.DIRECT, ms)
 
         kp,ki,kd = self.GetTunings (self.RollRatePIDTuningParams)
-        self._rollRatePID = PID.PID(0, kp, ki, kd, PID.DIRECT, util.millis())
+        self._rollRatePID = PID.PID(0, kp, ki, kd, PID.DIRECT, ms)
 
         self._pitchPID.SetSampleTime (self.PitchPIDSampleTime)
         self._yawPID.SetSampleTime (self.YawPIDSampleTime)
@@ -133,7 +127,7 @@ class AttitudeControl(FileConfig.FileConfig):
         self._rollRatePID.SetOutputLimits (mn, mx)
 
         self.CurrentPitch = self._sensors.Pitch()
-        self._pitchPID.SetSetPoint (self.DesiredPitch)
+        self._pitchPID.SetSetPoint (self.CurrentPitch)
         self._pitchPID.SetMode (PID.AUTOMATIC, self.CurrentPitch, self._elevator_control.GetCurrent())
 
         self.CurrentYaw = self._sensors.Yaw()
@@ -143,7 +137,7 @@ class AttitudeControl(FileConfig.FileConfig):
         self._yawPID.SetOutputLimits (mn, mx)
 
         self.CurrentRollRate = self._sensors.RollRate()
-        self._rollRatePID.SetSetPoint (self.get_roll_rate())
+        self._rollRatePID.SetSetPoint (self.CurrentRollRate)
         self._rollRatePID.SetMode (PID.AUTOMATIC, self.CurrentRollRate, self._aileron_control.GetCurrent())
 
         if self.JournalFileName and (not self._journal_file):
@@ -186,7 +180,7 @@ class AttitudeControl(FileConfig.FileConfig):
                 kp,ki,kd = self.GetTunings (self.PitchPIDTuningParams)
                 self._pitchPID.SetTunings (kp, ki, kd)
 
-        ms = util.millis()
+        ms = util.millis(self._sensors.Time())
         if self._journal_file:
             self._journal_file.write(str(ms))
         if self._in_pid_optimization != "roll":
@@ -229,13 +223,7 @@ class AttitudeControl(FileConfig.FileConfig):
 
     def get_roll_rate(self):
         self.CurrentRoll = self._sensors.Roll()
-        roll_error = self.DesiredRoll - self.CurrentRoll
-        roll_rate = roll_error / self.AttitudeAchievementSeconds
-        if abs(roll_rate) < self.MinRollRate:
-            roll_rate = self.MinRollRate if roll_rate > 0 else -self.MinRollRate
-        elif abs(roll_rate) > self.MaxRollRate:
-            roll_rate = self.MaxRollRate if roll_rate > 0 else -self.MaxRollRate
-        return roll_rate
+        return get_rate(self.CurrentRoll, self.DesiredRoll, self.AttitudeAchievementSeconds, self.MaxRollRate)
 
     # Returns how much the rudders should be offset to approximate coordinated flight,
     #  given the current aileron deflection

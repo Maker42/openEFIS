@@ -1,6 +1,6 @@
-StraightAndLevel(20)
+StraightAndLevel(20,2000)
 PIDOptimizationStart("flight.attitude.roll")
 PIDOptimizationNext()
 PIDOptimizationNext()
 PIDOptimizationNext()
-StraightAndLevel(5)
+StraightAndLevel(5,2000)

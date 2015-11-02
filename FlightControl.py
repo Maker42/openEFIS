@@ -33,7 +33,7 @@ class FlightControl(FileConfig.FileConfig):
         self.DesiredCourse = [(0,0), (0,0)]
         self.DesiredAltitude = 0
         self.DesiredAirSpeed = 0
-        self.DesiredHeading = 0
+        self.DesiredTrueHeading = 0
         self._desired_climb_rate = 0
         self.MinClimbAirSpeed = 20.0
         self.JournalPitch = False
@@ -46,7 +46,7 @@ class FlightControl(FileConfig.FileConfig):
         self.CurrentAirSpeed = sensors.AirSpeed()
         self.CurrentClimbRate = sensors.ClimbRate()
         self.CurrentPosition = sensors.Position()
-        self._turn_start = sensors.Heading()
+        self._turn_start = sensors.TrueHeading()
         self._journal_file = None
         self._journal_flush_count = 0
         self._in_pid_optimization = ''
@@ -62,7 +62,6 @@ class FlightControl(FileConfig.FileConfig):
         self._flight_mode = SUBMODE_COURSE
         self._callback = callback
         self._turn_degrees = 0
-        self._desired_roll = 0
         self._swoop_low_alt = sensors.Altitude()
 
         # Configuration properties
@@ -88,6 +87,7 @@ class FlightControl(FileConfig.FileConfig):
         self.SecondsHeadingCorrection = 2.0
 
         self.MaxPitchChangePerSample = 1.0
+        self.TurnRadius = 1.0/300.0         # 1/5 of a nautical mile
 
         # Will Use one of the following 2 PIDS to request pitch angle:
         # Input: Current Climb Rate; SetPoint: Desired Climb Rate; Output: Desired Pitch Attitude
@@ -106,7 +106,7 @@ class FlightControl(FileConfig.FileConfig):
 
     def initialize(self, filelines):
         self.InitializeFromFileLines(filelines)
-        ms = util.millis()
+        ms = util.millis(self._sensors.Time())
 
         kp,ki,kd = self.ClimbPitchPIDTuningParams
         self._climbPitchPID = PID.PID(0, kp, ki, kd, PID.DIRECT, ms)
@@ -129,7 +129,6 @@ class FlightControl(FileConfig.FileConfig):
     # have responsibility and authority. Activates PIDs.
     def Start(self, last_desired_pitch):
         logger.debug ("Flight Control Starting")
-        self._attitude_control.StartFlight()
         mn,mx = self._throttle_control.GetLimits()
         self._throttle_range = (mn,mx)
         self._throttlePID.SetOutputLimits (mn, mx)
@@ -148,6 +147,7 @@ class FlightControl(FileConfig.FileConfig):
             self.SelectAirspeedPitch()
         else:
             self.SelectClimbratePitch()
+        self._attitude_control.StartFlight()
         if self.JournalFileName and (not self._journal_file):
             self._journal_file = open(self.JournalFileName, 'w+')
             if self._journal_file:
@@ -179,24 +179,26 @@ class FlightControl(FileConfig.FileConfig):
 
     def SelectAirspeedPitch(self):
         if self._current_pitch_mode != "airspeed":
+            logger.debug("Switching to AirSpeed pitch control")
             if self._current_pitch_mode == "climb":
                 # Turn off climb pitch PID
                 self._climbPitchPID.SetMode (PID.MANUAL, self.CurrentClimbRate, self._desired_pitch)
             # Turn on climb rate Pitch PID
             if self._in_pid_optimization != "airspeed_pitch":
                 self._airspeedPitchPID.SetSetPoint (self.MinClimbAirSpeed)
-            self._airspeedPitchPID.SetMode (PID.AUTOMATIC, self.CurrentAirSpeed, self._desired_pitch)
+            self._airspeedPitchPID.SetMode (PID.AUTOMATIC, self.CurrentAirSpeed, self._sensors.Pitch())
             self._current_pitch_mode = "airspeed"
 
     def SelectClimbratePitch(self):
         if self._current_pitch_mode != "climb":
+            logger.debug("Switching to Climb rate pitch control")
             if self._current_pitch_mode == "airspeed":
                 # Turn off airspeed pitch PID
                 self._airspeedPitchPID.SetMode (PID.MANUAL, self.CurrentClimbRate, self._desired_pitch)
             # Turn on climb rate Pitch PID
             if self._in_pid_optimization != "airspeed_pitch":
                 self._climbPitchPID.SetSetPoint (self._desired_climb_rate)
-            self._climbPitchPID.SetMode (PID.AUTOMATIC, self.CurrentClimbRate, self._desired_pitch)
+            self._climbPitchPID.SetMode (PID.AUTOMATIC, self.CurrentClimbRate, self._sensors.Pitch())
             self._current_pitch_mode = "climb"
 
     def UpdateAirspeedPitch(self, ms):
@@ -239,9 +241,9 @@ class FlightControl(FileConfig.FileConfig):
         return self._desired_roll, self._desired_climb_rate, self._desired_pitch
 
     def Update(self):
-        ms = util.millis()
+        ms = util.millis(self._sensors.Time())
         self.CurrentAirSpeed = self._sensors.AirSpeed()
-        self.CurrentHeading = self._sensors.Heading()
+        self.CurrentTrueHeading = self._sensors.TrueHeading()
         if self._flight_mode == SUBMODE_TURN:
             if self.completed_turn():
                 self.get_next_directive()
@@ -271,13 +273,13 @@ class FlightControl(FileConfig.FileConfig):
                             self._throttle_control.GetCurrent())
 
             if self._flight_mode == SUBMODE_STRAIGHT:
-                self._desired_roll = 0.0
+                self.compute_heading_rate(self.DesiredTrueHeading)
             else:
                 self.compute_heading_from_course()
-                roll = self._desired_heading_rate_change * self.RollFactor
-                if abs(roll) > self.MaxRoll:
-                    roll = self.MaxRoll if roll > 0 else -self.MaxRoll
-                self._desired_roll = roll
+            roll = self._desired_heading_rate_change * self.RollFactor
+            if abs(roll) > self.MaxRoll:
+                roll = self.MaxRoll if roll > 0 else -self.MaxRoll
+            self._desired_roll = roll
 
         if self._journal_file:
             self._journal_file.write(str(ms))
@@ -321,10 +323,9 @@ class FlightControl(FileConfig.FileConfig):
 
     # Compute a good self._desired_heading_rate_change based on the course, speed, heading and position
     def compute_heading_from_course(self):
-        angle = util.TrueHeading(self.DesiredCourse)
         pos = self._sensors.Position()
-        course_heading = util.MagneticHeading(angle, pos)
-        heading_to_dest = util.MagneticHeading(util.TrueHeading ((pos, self.DesiredCourse[1]), pos))
+        course_heading = util.TrueHeading(self.DesiredCourse, "compute_heading_from_course TrueHeading:", 100)
+        heading_to_dest = util.TrueHeading ([pos, self.DesiredCourse[1]])
         heading_error = (heading_to_dest - course_heading)
         # Handle wrap around
         if heading_error > 180:
@@ -337,11 +338,16 @@ class FlightControl(FileConfig.FileConfig):
         if abs(correction_heading) > 90:
             # TODO: Signal back to flight director of way off course
             correction_heading = 90 if correction_heading > 0 else -90
-        intercept_heading = course_heading - correction_heading
+        intercept_heading = course_heading + correction_heading
+        #util.log_occasional_info("compute_heading_from_course",
+        #        "cur_pos = (%g,%g), to=(%g,%g), course_h=%g, h_dest=%g, h_err = %g, cor=%g, intercept=%g"%(
+        #            pos[0], pos[1],
+        #            self.DesiredCourse[1][0], self.DesiredCourse[1][1],
+        #            course_heading, heading_to_dest, heading_error, correction_heading, intercept_heading), 100)
         self.compute_heading_rate(intercept_heading)
 
     def compute_heading_rate(self, intercept_heading):
-        heading_error = intercept_heading - self.CurrentHeading
+        heading_error = intercept_heading - self.CurrentTrueHeading
         # Handle wrap around
         if heading_error > 180:
             heading_error -= 360
@@ -350,13 +356,24 @@ class FlightControl(FileConfig.FileConfig):
         # heading rate change in degrees per second
         self._desired_heading_rate_change = heading_error / self.SecondsHeadingCorrection
 
-    def compute_heading_straight(self):
-        self.compute_heading_rate(self.DesiredHeading)
-
     def FollowCourse(self, course, alt):
         self._flight_mode = SUBMODE_COURSE
         self.DesiredCourse = course
         self.DesiredAltitude = alt
+
+    def TurnTo(self, degrees, roll_angle, alt):
+        logger.debug ("Flight control turning to %g, roll %g, alt %d", degrees, roll_angle, alt)
+        self._flight_mode = SUBMODE_TURN
+        self._turn_start = self._sensors.TrueHeading()
+        direction = degrees - self._turn_start
+        if direction < -180.0:
+            direction += 360.0
+        elif direction > 180.0:
+            direction -= 360.0
+        self._turn_degrees = direction
+        self._desired_roll = roll_angle
+        self.DesiredAltitude = alt
+        logger.debug("starting turn at %g", self._turn_start)
 
     def Turn(self, degrees, roll_angle, alt):
         logger.debug ("Flight control turning %g, roll %g, alt %d", degrees, roll_angle, alt)
@@ -364,7 +381,8 @@ class FlightControl(FileConfig.FileConfig):
         self._turn_degrees = degrees
         self._desired_roll = roll_angle
         self.DesiredAltitude = alt
-        self._turn_start = self._sensors.Heading()
+        self._turn_start = self._sensors.TrueHeading()
+        logger.debug("starting turn at %g", self._turn_start)
 
     def Swoop(self, course, low_alt, high_alt, min_airspeed=0):
         current_altitude = self._sensors.Altitude()
@@ -391,15 +409,32 @@ class FlightControl(FileConfig.FileConfig):
                 self._swoop_min_as = self.MinClimbAirSpeed
             self.DesiredAltitude = low_alt
 
-    def FlyTo(self, coordinate, alt):
+    def FlyTo(self, coordinate, desired_altitude=0, desired_airspeed=0):
         self.DesiredCourse = [self._sensors.Position(), coordinate]
-        self.DesiredAltitude = alt
+        if desired_altitude:
+            self.DesiredAltitude = desired_altitude
+        if desired_airspeed:
+            self.DesiredAirSpeed = desired_airspeed
         self._flight_mode = SUBMODE_COURSE
 
-    def StraightAndLevel(self):
+    def FlyCourse(self, course, desired_altitude=0, desired_airspeed=0):
+        self.DesiredCourse = course
+        if desired_altitude:
+            self.DesiredAltitude = desired_altitude
+        if desired_airspeed:
+            self.DesiredAirSpeed = desired_airspeed
+        self._flight_mode = SUBMODE_COURSE
+
+    def StraightAndLevel(self, desired_altitude=0, desired_airspeed=0, desired_heading = None):
         self._flight_mode = SUBMODE_STRAIGHT
-        self.DesiredAltitude = self._sensors.Altitude()
-        self.DesiredHeading = self._sensors.Heading()
+        if desired_altitude:
+            self.DesiredAltitude = desired_altitude
+        if desired_airspeed:
+            self.DesiredAirSpeed = desired_airspeed
+        if desired_heading == None:
+            self.DesiredTrueHeading = self._sensors.TrueHeading()
+        else:
+            self.DesiredTrueHeading = desired_heading
 
     def PIDOptimizationStart(self, which_pid, params, scoring_object, outfile):
         self._in_pid_optimization = which_pid
@@ -467,12 +502,17 @@ class FlightControl(FileConfig.FileConfig):
     def completed_turn(self):
         turn_sign = 1 if self._turn_degrees > 0 else -1
         turn_termination = (self._turn_start + self._turn_degrees) % 360
-        diff = self.CurrentHeading - turn_termination
+        if turn_termination < 0:
+            turn_termination += 360
         if turn_sign == 1:
-            if diff < self._turn_degrees and diff >= 0:
+            if (self.CurrentTrueHeading > turn_termination and
+                    self.CurrentTrueHeading < turn_termination + self._turn_degrees / 2.0):
+                logger.debug("completed turn at %g/%g", self.CurrentTrueHeading, turn_termination)
                 return True
         else:
-            if diff > self._turn_degrees and diff <= 0:
+            if (self.CurrentTrueHeading < turn_termination and
+                    self.CurrentTrueHeading > turn_termination + self._turn_degrees / 2.0):
+                logger.debug("completed turn at %g/%g", self.CurrentTrueHeading, turn_termination)
                 return True
         return False
 
@@ -481,24 +521,22 @@ class FlightControl(FileConfig.FileConfig):
         # perpendicular to the course and intersecting the terminal waypoint
 
         # Translate the current position to a coordinate space with the terminal point at origin
+        angle,distance,rel_lng = util.TrueHeadingAndDistance(self.DesiredCourse)
         lng,lat = self.CurrentPosition
         tlng,tlat = self.DesiredCourse[1]
         dlng = lng-tlng
         dlat = lat-tlat
-        angle = util.TrueHeading(self.DesiredCourse)
+        dlng *= rel_lng
         x,y = util.rotate2d (angle * util.M_PI / 180, dlng, dlat)
-        if y >= 0:
+        #util.log_occasional_info("completed_course",
+        #        "cur_pos = (%g,%g), to=(%g,%g), dlng=%g, dlat=%g, angle=%g, xy=%g,%g"%(
+        #            self.CurrentPosition[0], self.CurrentPosition[1],
+        #            self.DesiredCourse[1][0], self.DesiredCourse[1][1],
+        #            dlng, dlat, angle, x, y))
+        if y >= -self.TurnRadius:
             return True
         else:
             return False
 
     def get_next_directive(self):
         self._callback.GetNextDirective()
-
-
-def mac(h,f):
-    if h != None:
-        return h*f
-    else:
-        return 0
-    

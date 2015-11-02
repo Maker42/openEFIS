@@ -1,0 +1,5 @@
+StraightAndLevel(60, 1000, 50.0)
+Turn(45.0, 10.0)
+StraightAndLevel(60, 1000, 40.0)
+Turn(45.0, 10.0)
+StraightAndLevel(60, 1000, 50.0)
