@@ -39,6 +39,10 @@ class XplaneControl:
         self.dref_struct_preamble = struct.pack("5s", "DREF")
         self.dref_struct_body = struct.Struct("f500s")
 
+        self.data_struct_preamble = struct.pack("5s", "DATA")
+        self.data_struct_body = struct.Struct("iffffffff")
+        self.throttle_index = 26
+
         override_joystick = self.dref_struct_preamble + self.dref_struct_body.pack(1.0, "sim/operation/override/override_joystick")
         self.sock.sendto (override_joystick, (self.xplane_host, self.xplane_port))
 
@@ -82,6 +86,24 @@ class XplaneControl:
             except:
                 time.sleep(.01)
 
+    def SetThrottles(self, throttles):
+        cmd = self.data_struct_preamble + self.data_struct_body.pack(self.throttle_index,
+                throttles[0],
+                throttles[1],
+                throttles[2],
+                throttles[3],
+                throttles[4],
+                throttles[5],
+                0.0, 0.0)
+        logger.log (3, "Setting throttles to %g,%g,%g,%g  %g,%g", throttles[0],
+                throttles[1],
+                throttles[2],
+                throttles[3],
+                throttles[4],
+                throttles[5],
+                )
+        control.sock.sendto(cmd, (self.xplane_host, self.xplane_port))
+
     def initialize(self, filelines):
         self.servo_range_size = self.ServoRange[1] - self.ServoRange[0]
         return
@@ -103,13 +125,17 @@ class XplaneSensors:
                 (0, "ClimbRate", "sim/flightmodel/position/vh_ind_fpm"),
                 (0, "Longitude", "sim/flightmodel/position/longitude"),
                 (0, "Latitude", "sim/flightmodel/position/latitude"),
-                (0, "MagneticVariation", "sim/flightmodel/position/magnetic_variation"),
+                (0, "MagneticDeclination", "sim/flightmodel/position/magnetic_variation"),
+                (0, "TrueHeading", "sim/flightmodel/position/true_psi"),
+                (0, "SimTime", "sim/time/total_running_time_sec"),
+                (0, "beta", "sim/flightmodel/position/beta"),
                 ]
         self.previous_readings = [s[0] for s in self.sensor_suite]
         self.SamplesPerSecond = 10
         self.dref_rcv_struct = struct.Struct("If")
         self.preamble_struct = struct.Struct("5s")
         self.dref_request_struct = struct.Struct("II400s")
+        self.data_struct_body = struct.Struct("iffffffff")
 
 
     def initialize(self, filelines):
@@ -215,6 +241,27 @@ class XplaneSensors:
         assert(self.sensor_suite[1][1] == "Heading")
         return ((self.sensor_suite[1][0] - self.previous_readings[1]) * self.SamplesPerSecond)
 
+    def TrueHeading(self):
+        self.ProcessIncoming()
+        assert(self.sensor_suite[13][1] == "TrueHeading")
+        return self.sensor_suite[13][0]
+
+    def MagneticDeclination(self):
+        self.ProcessIncoming()
+        assert(self.sensor_suite[12][1] == "MagneticDeclination")
+        return self.sensor_suite[12][0]
+
+    def Time(self):
+        self.ProcessIncoming()
+        assert(self.sensor_suite[14][1] == "SimTime")
+        return self.sensor_suite[14][0]
+
+    def GroundTrack(self):
+        self.ProcessIncoming()
+        assert(self.sensor_suite[15][1] == "beta")
+        assert(self.sensor_suite[1][1] == "Heading")
+        return (self.sensor_suite[1][0] + self.sensor_suite[15][0])
+
     def ProcessIncoming(self):
         global control
         while True:
@@ -243,3 +290,7 @@ class XplaneSensors:
                     #print ("Xplane reading[%s] = %g"%(self.sensor_suite[index][1], val))
                 else:
                     logger.warning("Got input from X-Plane in index %d", index)
+        elif rec.startswith("DATA"):
+            rec = rec[5:]
+            index,v1,v2,v3,v4,v5,v6,v7,v8 = self.data_struct_body.unpack(rec)
+            print ("DATA[%d]: %g, %g, %g, %g,    %g, %g, %g, %g"%(index, v1, v2,v3,v4,v5,v6,v7))

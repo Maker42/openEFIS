@@ -88,7 +88,7 @@ if '__main__' == __name__:
         pass
     rootlogger.addHandler(logging.FileHandler(os.path.join(Globals.LoggingPrefix, 'info.log')))
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.ERROR)
+    console_handler.setLevel(logging.INFO)
     rootlogger.addHandler(console_handler)
     rootlogger.log(99, log_start)
 
@@ -128,7 +128,8 @@ if '__main__' == __name__:
         pid_scoring.Optimizer.StartOptimize()
         craft.SetPIDScoring(pid_scoring)
 
-    craft.ChangeMode (Airplane.FLIGHT_MODE_AIRBORN)
+    #craft.ChangeMode (Airplane.FLIGHT_MODE_AIRBORN)
+    #craft._flight_control._throttle_control.Set(.5)
     craft.DispatchCommand (craft.FlightPlan[0])
     while True:
         craft.Update()

@@ -17,7 +17,8 @@ import time, logging
 
 import PID, FileConfig
 
-import Xplane, SurfaceControl, AttitudeControl, FlightControl
+import Xplane, SurfaceControl, AttitudeControl, FlightControl, AttitudeControlVTOL, TakeoffControlVTOL
+import MiddleEngineTiltControl, VTOLYawControl
 
 logger=logging.getLogger(__name__)
 
@@ -53,8 +54,12 @@ class Airplane(FileConfig.FileConfig):
         self._elevator_control = None
         self._rudder_control = None
         self._throttle_control = None
+        self._yawvtol_control = None
+        self._middle_engine_tilt_control = None
+        self._outer_engine_release_control = None
 
         self._attitude_control = None
+        self._attitude_control_vtol = None
         self._flight_control = None
         self._ground_control = None
         self._takeoff_control = None
@@ -81,6 +86,12 @@ class Airplane(FileConfig.FileConfig):
                 "Sensors" : self.init_sensors,
                 "ServoControl" : self.init_servo_control,
                 "CommandControl" : self.init_command_control,
+                "AttitudeControl" : self.init_attitude_control,
+                "TakeoffControl" : self.init_takeoff_control,
+                # TODO: implement these init routines
+                "VTOLYawControl": self.init_yaw_vtol_control,
+                "MiddleEngineTiltControl": self.init_middle_engine_tilt_control,
+                "OuterEngineReleaseControl": self.init_outer_engine_release_control
         }
 
         single_arg_actions = {
@@ -106,9 +117,16 @@ class Airplane(FileConfig.FileConfig):
     def init_attitude_control(self, args, filelines):
         if not (self._aileron_control and self._elevator_control and self._rudder_control and self._sensors):
             raise RuntimeError("Must initialize fundamental controls before attitude control")
-        self._attitude_control = AttitudeControl.AttitudeControl (self._aileron_control,
-                self._elevator_control, self._rudder_control, self._sensors)
-        self._attitude_control.initialize(filelines)
+        if len(args) > 1 and args[1] == "AttitudeControlVTOL":
+            if not self._attitude_control:
+                raise RuntimeError ("Must initialize flight attitude control before VTOL attitude control")
+            self._attitude_control_vtol = AttitudeControlVTOL.AttitudeControlVTOL (self._servo_controller,
+                    self._yawvtol_control, self._elevator_control, self._attitude_control, self._sensors)
+            self._attitude_control_vtol.initialize(filelines)
+        else:
+            self._attitude_control = AttitudeControl.AttitudeControl (self._aileron_control,
+                    self._elevator_control, self._rudder_control, self._sensors)
+            self._attitude_control.initialize(filelines)
 
     def init_flight_control(self, args, filelines):
         if not (self._attitude_control and self._throttle_control and self._sensors):
@@ -128,9 +146,14 @@ class Airplane(FileConfig.FileConfig):
         if not (self._aileron_control and self._elevator_control and self._rudder_control and self._sensors
                 and self._throttle_control):
             raise RuntimeError("Must initialize fundamental controls before takeoff control")
-        self._takeoff_control = TakeoffControl.TakeoffControl(self._aileron_control,
-                self._rudder_control, self._elevator_control,
-                self._throttle_control, self._sensors, self)
+        if len(args) > 1 and args[1] == "TakeoffControlVTOL":
+            self._takeoff_control = TakeoffControlVTOL.TakeoffControlVTOL(self._attitude_control_vtol,
+                    self._middle_engine_tilt_control, self._outer_engine_release_control,
+                    self._sensors, self)
+        else:
+            self._takeoff_control = TakeoffControl.TakeoffControl(self._aileron_control,
+                    self._rudder_control, self._elevator_control,
+                    self._throttle_control, self._sensors, self)
         self._takeoff_control.initialize(filelines)
 
     def init_landing_control(self, args, filelines):
@@ -140,6 +163,15 @@ class Airplane(FileConfig.FileConfig):
                 self._throttle_control, self._sensors, self)
         self._landing_control.initialize(filelines)
 
+    def init_yaw_vtol_control(self, args, filelines):
+        self._yawvtol_control = eval(' '.join(args[1:]))
+        self._yawvtol_control.initialize(self._middle_engine_tilt_control)
+
+    def init_middle_engine_tilt_control(self, args, filelines):
+        self._middle_engine_tilt_control = eval(' '.join(args[1:]))
+
+    def init_outer_engine_release_control(self, args, filelines):
+        self._outer_engine_release_control = eval(' '.join(args[1:]))
 
     def init_rudder_control(self, args, filelines):
         self._rudder_control = eval(' '.join(args[1:]))
@@ -197,12 +229,31 @@ class Airplane(FileConfig.FileConfig):
             course = self.DesiredCourse
         self._flight_control.Swoop(course, low_alt, high_alt)
 
-    def FlyTo(self, next_waypoint, desired_altitude):
+    def FlyCourse(self, course, desired_altitude=0, desired_airspeed=0):
+        assert (self.CurrentFlightMode == FLIGHT_MODE_AIRBORN)
+        self.DesiredCourse = course
+        if desired_altitude:
+            self.DesiredAltitude = desired_altitude
+        if desired_airspeed:
+            self.DesiredAirSpeed = desired_airspeed
+        self._flight_control.FlyCourse (course, desired_altitude, desired_airspeed)
+
+    def FlyTo(self, next_waypoint, desired_altitude=0, desired_airspeed=0):
         assert (self.CurrentFlightMode == FLIGHT_MODE_AIRBORN)
         last_waypoint = self._sensors.Position()
         self.DesiredCourse = [last_waypoint, next_waypoint]
-        self.DesiredAltitude = desired_altitude
-        self._flight_control.FlyTo (next_waypoint, desired_altitude)
+        if desired_altitude:
+            self.DesiredAltitude = desired_altitude
+        if desired_airspeed:
+            self.DesiredAirSpeed = desired_airspeed
+        self._flight_control.FlyTo (next_waypoint, desired_altitude, desired_airspeed)
+
+    def TurnTo(self, degrees, roll, desired_altitude=0):
+        logger.debug ("Turning to %g degrees with roll %g at altitude %d", degrees, roll, desired_altitude)
+        assert (self.CurrentFlightMode == FLIGHT_MODE_AIRBORN)
+        if desired_altitude:
+            self.DesiredAltitude = desired_altitude
+        self._flight_control.TurnTo (degrees, roll, self.DesiredAltitude)
 
     def Turn(self, degrees, roll, desired_altitude=0):
         logger.debug ("Turning %g degrees with roll %g at altitude %d", degrees, roll, desired_altitude)
@@ -216,9 +267,11 @@ class Airplane(FileConfig.FileConfig):
         self.DesiredAltitude = desired_altitude
         self._flight_control.DesiredAltitude = desired_altitude
 
-    def StraightAndLevel(self, dtime):
-        self._current_directive_end_time = time.time() + dtime
-        self._flight_control.StraightAndLevel()
+    def StraightAndLevel(self, dtime, desired_altitude=0, desired_airspeed=0, desired_heading=None):
+        self._current_directive_end_time = self._sensors.Time() + dtime
+        if desired_altitude:
+            self.DesiredAltitude = desired_altitude
+        self._flight_control.StraightAndLevel(desired_altitude, desired_airspeed, desired_heading)
 
     # Inputs specify touchdown point and (exact) heading and altitude of runway
     def Land(self):
@@ -230,13 +283,13 @@ class Airplane(FileConfig.FileConfig):
 
     def Update(self):
         if self.has_crashed():
-            self.throttle_control.Set(0)
+            self._throttle_control.Set(0)
             return -1
         if not self._was_moving and self._sensors.GroundSpeed() > 0:
             self._was_moving = True
         if self.CurrentFlightMode == FLIGHT_MODE_AIRBORN:
             self._flight_control.Update()
-            if self._current_directive_end_time != 0 and self._current_directive_end_time <= time.time():
+            if self._current_directive_end_time != 0 and self._current_directive_end_time <= self._sensors.Time():
                 # The latest optimization step was running but has completed. Go to next directive
                 self._current_directive_end_time = 0
                 logger.debug("Completed last timed directive")
@@ -301,7 +354,7 @@ class Airplane(FileConfig.FileConfig):
         if routing_to == "flight":
             step = self._flight_control.PIDOptimizationStart (which_pid[7:], params, self._pid_optimization_scoring, outfile)
             assert(step)
-            self._current_directive_end_time = time.time() + step.periods
+            self._current_directive_end_time = self._sensors.Time() + step.periods
         else:
             raise RuntimeError("non-flight PID optimization unimplemented")
 
@@ -320,7 +373,7 @@ class Airplane(FileConfig.FileConfig):
             logger.debug("PID optimization score %g", ret)
             self.GetNextDirective()
         else:
-            self._current_directive_end_time = time.time() + ret.periods
+            self._current_directive_end_time = self._sensors.Time() + ret.periods
             logger.debug("PID optimization start next")
 
     def GetNextDirective(self):
@@ -362,7 +415,7 @@ class Airplane(FileConfig.FileConfig):
     def DispatchCommand(self, command):
         nonblocking_commands = ["ChangeAltitude"]
         blocking_commands = ["Turn", "NextWayPoint", "Taxi", "Takeoff", "FlyTo", "Land", 
-                "PIDOptimizationStart", "PIDOptimizationNext", "StraightAndLevel"]
+                "PIDOptimizationStart", "PIDOptimizationNext", "StraightAndLevel", "FlyCourse"]
         logger.info ("Executing command %s", command)
         for c in nonblocking_commands:
             if command.startswith (c):
