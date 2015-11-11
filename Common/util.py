@@ -50,18 +50,10 @@ def get_polar_deltas(course):
     dlat = lat2 - lat1
     return (dlng,dlat)
 
+MAX_COURSE_HOP_LENGTH_DEG = 1.0/3.0
+MAX_COURSE_HOP_LENGTH_RAD = MAX_COURSE_HOP_LENGTH_DEG * M_PI/180.0
 
-# Computes true heading from a given course
-def TrueHeadingAndDistance(course, periodic_logging=None, frequency=10):
-    MAX_COURSE_HOP_LENGTH_DEG = 1.0/3.0
-    MAX_COURSE_HOP_LENGTH_RAD = MAX_COURSE_HOP_LENGTH_DEG * M_PI/180.0
-    dlng,dlat = get_polar_deltas(course)
-    if dlng > MAX_COURSE_HOP_LENGTH_DEG or dlat > MAX_COURSE_HOP_LENGTH_DEG:
-        expanded_course = ExpandCourseList(course, MAX_COURSE_HOP_LENGTH_DEG)
-        dlng,dlat = get_polar_deltas(expanded_course)
-    lat1 = course[0][1] * M_PI / 180.0
-
-    # Determine how far is a longitude increment relative to latitude at this latitude
+def GetRelLng(lat1):
     rel_lng_inc = Spatial.Polar(0.0,lat1,1.0).to3(robot_coordinates=False)
     rel_lng = Spatial.Polar(MAX_COURSE_HOP_LENGTH_RAD,lat1,1.0).to3(robot_coordinates=False)
     rel_lng.sub(rel_lng_inc)
@@ -69,8 +61,23 @@ def TrueHeadingAndDistance(course, periodic_logging=None, frequency=10):
     rel_lat_inc = Spatial.Polar(0.0,lat1,1.0).to3(robot_coordinates=False)
     rel_lat = Spatial.Polar(0.0,lat1+MAX_COURSE_HOP_LENGTH_RAD,1.0).to3(robot_coordinates=False)
     rel_lat.sub(rel_lat_inc)
+    return rel_lng.norm() / rel_lat.norm()
 
-    relative_lng_length = rel_lng.norm() / rel_lat.norm()
+def GetAdjustedPolarDeltas(course):
+    dlng,dlat = get_polar_deltas(course)
+    rel_lng = GetRelLng(course[0][1])
+    return (dlng*rel_lng, dlat)
+
+# Computes true heading from a given course
+def TrueHeadingAndDistance(course, periodic_logging=None, frequency=10):
+    dlng,dlat = get_polar_deltas(course)
+    if dlng > MAX_COURSE_HOP_LENGTH_DEG or dlat > MAX_COURSE_HOP_LENGTH_DEG:
+        expanded_course = ExpandCourseList(course, MAX_COURSE_HOP_LENGTH_DEG)
+        dlng,dlat = get_polar_deltas(expanded_course)
+    lat1 = course[0][1] * M_PI / 180.0
+
+    # Determine how far is a longitude increment relative to latitude at this latitude
+    relative_lng_length = GetRelLng(lat1)
     dlng *= relative_lng_length
 
     heading = math.atan2(dlng, dlat) * 180 / M_PI
@@ -147,13 +154,22 @@ def get_rate(current, desired, time_divisor, limits):
     rate = error / time_divisor
     if isinstance(limits,tuple) or isinstance(limits,list):
         mn = limits[0]
-        if abs(rate) < mn:
-            rate = mn if rate > 0 else -mn
         mx = limits[1]
     else:
+        mn = -limits
         mx = limits
 
-    if abs(rate) > mx:
-        rate = mx if rate > 0 else -mx
+    if rate > mx:
+        rate = mx
+    if rate < mn:
+        rate = mn
     return rate
 
+def AddPosition(position, distance, direction, rel_lng = 0.0):
+    if not rel_lng:
+        rel_lng = GetRelLng(position[1])
+    direction *= M_PI / 180.0
+    dlat = distance * math.sin(direction) / 60.0
+    dlng = disatnce * math.cos(direction) * rel_lng / 60.0
+    position = (position[0] + dlng, position[1] + dlat)
+    return position

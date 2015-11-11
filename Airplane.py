@@ -17,8 +17,9 @@ import time, logging
 
 import PID, FileConfig
 
-import Xplane, SurfaceControl, AttitudeControl, FlightControl, AttitudeControlVTOL, TakeoffControlVTOL
-import MiddleEngineTiltControl, VTOLYawControl
+import Xplane, SurfaceControl, AttitudeControl, FlightControl, AttitudeControlVTOL, TakeoffControlVTOL, LandingControlVTOL
+import MiddleEngineTiltControl, VTOLYawControl, SolenoidControl
+import UnitTestFixture
 
 logger=logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ class Airplane(FileConfig.FileConfig):
         # Airplane parameters:
         self.MaxAirSpeed = 10       # nautical miles per Hour
         self.StallSpeed = 3         # KPH
+        self.GroundEffectHeight = 15.0
 
         # Operating parameters:
         self.BatteryMinReserve = 30
@@ -56,7 +58,8 @@ class Airplane(FileConfig.FileConfig):
         self._throttle_control = None
         self._yawvtol_control = None
         self._middle_engine_tilt_control = None
-        self._outer_engine_release_control = None
+        self._VTOL_engine_release_control = None
+        self._forward_engine_release_control = None
 
         self._attitude_control = None
         self._attitude_control_vtol = None
@@ -88,10 +91,11 @@ class Airplane(FileConfig.FileConfig):
                 "CommandControl" : self.init_command_control,
                 "AttitudeControl" : self.init_attitude_control,
                 "TakeoffControl" : self.init_takeoff_control,
-                # TODO: implement these init routines
+                "LandingControl" : self.init_landing_control,
                 "VTOLYawControl": self.init_yaw_vtol_control,
                 "MiddleEngineTiltControl": self.init_middle_engine_tilt_control,
-                "OuterEngineReleaseControl": self.init_outer_engine_release_control
+                "VTOLEngineReleaseControl": self.init_VTOL_engine_release_control,
+                "ForwardEngineReleaseControl": self.init_forward_engine_release_control
         }
 
         single_arg_actions = {
@@ -111,8 +115,15 @@ class Airplane(FileConfig.FileConfig):
         self._elevator_control.SetServoController(self._servo_controller)
         self._rudder_control.SetServoController(self._servo_controller)
         self._throttle_control.SetServoController(self._servo_controller)
+        if self._middle_engine_tilt_control:
+            self._middle_engine_tilt_control.SetServoController(self._servo_controller)
+        if self._VTOL_engine_release_control:
+            self._VTOL_engine_release_control.SetServoController(self._servo_controller)
+        if self._forward_engine_release_control:
+            self._forward_engine_release_control.SetServoController(self._servo_controller)
 
         self.RunwayAltitude = self._sensors.Altitude()
+        self.ApproachEndpoints = [self._sensors.Position(), self._sensors.Position()]
 
     def init_attitude_control(self, args, filelines):
         if not (self._aileron_control and self._elevator_control and self._rudder_control and self._sensors):
@@ -148,7 +159,7 @@ class Airplane(FileConfig.FileConfig):
             raise RuntimeError("Must initialize fundamental controls before takeoff control")
         if len(args) > 1 and args[1] == "TakeoffControlVTOL":
             self._takeoff_control = TakeoffControlVTOL.TakeoffControlVTOL(self._attitude_control_vtol,
-                    self._middle_engine_tilt_control, self._outer_engine_release_control,
+                    self._middle_engine_tilt_control, self._VTOL_engine_release_control,
                     self._sensors, self)
         else:
             self._takeoff_control = TakeoffControl.TakeoffControl(self._aileron_control,
@@ -159,8 +170,13 @@ class Airplane(FileConfig.FileConfig):
     def init_landing_control(self, args, filelines):
         if not (self._attitude_control and self._throttle_control and self._sensors):
             raise RuntimeError("Must initialize fundamental controls before landing control")
-        self._landing_control = LandingControl.LandingControl(self._attitude_control,
-                self._throttle_control, self._sensors, self)
+        if len(args) > 1 and args[1] == "LandingControlVTOL":
+            self._landing_control = LandingControlVTOL.LandingControlVTOL(self._attitude_control_vtol,
+                    self._middle_engine_tilt_control, self._forward_engine_release_control,
+                    self._sensors, self)
+        else:
+            self._landing_control = LandingControl.LandingControl(self._attitude_control,
+                    self._throttle_control, self._sensors, self)
         self._landing_control.initialize(filelines)
 
     def init_yaw_vtol_control(self, args, filelines):
@@ -170,8 +186,11 @@ class Airplane(FileConfig.FileConfig):
     def init_middle_engine_tilt_control(self, args, filelines):
         self._middle_engine_tilt_control = eval(' '.join(args[1:]))
 
-    def init_outer_engine_release_control(self, args, filelines):
-        self._outer_engine_release_control = eval(' '.join(args[1:]))
+    def init_VTOL_engine_release_control(self, args, filelines):
+        self._VTOL_engine_release_control = eval(' '.join(args[1:]))
+
+    def init_forward_engine_release_control(self, args, filelines):
+        self._forward_engine_release_control = eval(' '.join(args[1:]))
 
     def init_rudder_control(self, args, filelines):
         self._rudder_control = eval(' '.join(args[1:]))
@@ -326,7 +345,7 @@ class Airplane(FileConfig.FileConfig):
         elif self.CurrentFlightMode == FLIGHT_MODE_GROUND:
             self._ground_control.Start()
         elif self.CurrentFlightMode == FLIGHT_MODE_LANDING:
-            self._landing_control.Start(last_desired_pitch)
+            self._landing_control.Start()
         elif self.CurrentFlightMode == FLIGHT_MODE_TAKEOFF:
             self._takeoff_control.Start()
 

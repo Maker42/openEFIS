@@ -223,7 +223,7 @@ class AttitudeControl(FileConfig.FileConfig):
 
     def get_roll_rate(self):
         self.CurrentRoll = self._sensors.Roll()
-        return get_rate(self.CurrentRoll, self.DesiredRoll, self.AttitudeAchievementSeconds, self.MaxRollRate)
+        return util.get_rate(self.CurrentRoll, self.DesiredRoll, self.AttitudeAchievementSeconds, self.MaxRollRate)
 
     # Returns how much the rudders should be offset to approximate coordinated flight,
     #  given the current aileron deflection

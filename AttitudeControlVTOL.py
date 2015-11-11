@@ -53,6 +53,7 @@ class AttitudeControlVTOL(FileConfig.FileConfig):
         self._pid_optimization_scoring = None
 
         self._outer_engine_movement_begun = False
+        self._baseline_offset = 0.0     # Goes negative when the throttle is forced down
 
         # Configuration properties
 
@@ -70,17 +71,18 @@ class AttitudeControlVTOL(FileConfig.FileConfig):
         self.ClimbRatePIDSampleTime = 1000
         self.YawPIDSampleTime = 10
 
-        self.PitchPIDTuningParams = None
-        self.YawPIDTuningParams = None
+        self.PitchRatePIDTuningParams = None
         self.RollRatePIDTuningParams = None
+        self.YawPIDTuningParams = None
         self.ClimbRatePIDTuningParams = None
 
         self.AttitudePIDLimits = (-.2,.2)
         self.ClimbRatePIDLimits = (0.0,0.9)
-        self.YawPIDLimits = (-1.0,1.0)
 
         self.AttitudeAchievementSeconds = 1.0
         self.MaxAttitudeRate = 7.0 # degrees per second
+
+        self.ThrottleDownIncrement = .001
 
         # Working Objects
 
@@ -110,15 +112,15 @@ class AttitudeControlVTOL(FileConfig.FileConfig):
     def initialize(self, filelines):
         self.InitializeFromFileLines(filelines)
 
-        kp,ki,kd = self.PitchPIDTuningParams
+        kp,ki,kd = self.PitchRatePIDTuningParams
         ms = util.millis(self._sensors.Time())
         self._pitchRatePID = PID.PID(0, kp, ki, kd, PID.DIRECT, ms)
+        kp,ki,kd = self.RollRatePIDTuningParams
+        self._rollRatePID = PID.PID(0, kp, ki, kd, PID.DIRECT, ms)
 
         kp,ki,kd = self.YawPIDTuningParams
         self._yawPID = PID.PID(0, kp, ki, kd, PID.DIRECT, ms)
 
-        kp,ki,kd = self.RollRatePIDTuningParams
-        self._rollRatePID = PID.PID(0, kp, ki, kd, PID.DIRECT, ms)
 
         kp,ki,kd = self.ClimbRatePIDTuningParams
         self._climbRatePID = PID.PID(0, kp, ki, kd, PID.DIRECT, ms)
@@ -143,9 +145,10 @@ class AttitudeControlVTOL(FileConfig.FileConfig):
         self._pitchRatePID.SetSetPoint (util.get_rate(self.CurrentPitchRate, 0.0, self.AttitudeAchievementSeconds, self.MaxAttitudeRate))
         self._pitchRatePID.SetMode (PID.AUTOMATIC, self.CurrentPitchRate, 0.0)
 
-        self._yawPID.SetMode (PID.AUTOMATIC, self._sensors.HeadingRateChange(), 0.0)
-        mn,mx = self.YawPIDLimits
-        self._yawPID.SetOutputLimits (mn, mx)
+        if self._yaw_control:
+            self._yawPID.SetMode (PID.AUTOMATIC, self._sensors.HeadingRateChange(), 0.0)
+            mn,mx = self._yaw_control.GetLimits()
+            self._yawPID.SetOutputLimits (mn, mx)
 
         self.CurrentRollRate = self._sensors.RollRate()
         self._rollRatePID.SetSetPoint (util.get_rate(self.CurrentRollRate, 0.0, self.AttitudeAchievementSeconds, self.MaxAttitudeRate))
@@ -153,7 +156,9 @@ class AttitudeControlVTOL(FileConfig.FileConfig):
 
         self._climbRatePID.SetSetPoint (self.DesiredClimbRate)
         self._throttle_baseline = throttle_baseline
+        self._baseline_offset = 0.0
         self._climbRatePID.SetMode (PID.AUTOMATIC, self.CurrentClimbRate, self._throttle_baseline)
+        self._throttle_controls.SetThrottles([self._throttle_baseline for i in range(6)])
 
         if self.JournalFileName and (not self._journal_file):
             self._journal_file = open(self.JournalFileName, 'w+')
@@ -173,7 +178,8 @@ class AttitudeControlVTOL(FileConfig.FileConfig):
         self._pitchRatePID.SetMode (PID.MANUAL, self.CurrentPitchRate, self._pitch_throttle_offset)
         self._rollRatePID.SetMode (PID.MANUAL, self.CurrentRollRate, self._roll_throttle_offset)
         self._climbRatePID.SetMode (PID.MANUAL, self.CurrentClimbRate, self._throttle_baseline)
-        self._yawPID.SetMode (PID.MANUAL, self._sensors.HeadingRateChange(), 0.0)
+        if self._yaw_control:
+            self._yawPID.SetMode (PID.MANUAL, self._sensors.HeadingRateChange(), 0.0)
         if self._journal_file:
             self._journal_file.close()
 
@@ -238,24 +244,25 @@ class AttitudeControlVTOL(FileConfig.FileConfig):
             if self._journal_file and self.JournalClimb:
                 self._journal_file.write(",%g,%g,%g"%(self.DesiredClimbRate, self.CurrentClimbRate, self._throttle_baseline))
 
-            self.CurrentHeadingRate = self._sensors.HeadingRateChange()
-            if self._in_pid_optimization != "yaw":
-                self._yawPID.SetSetPoint (self.DesiredHeadingRate)
-            tilt_delta = self._yawPID.Compute(self.CurrentHeadingRate, ms)
-            # TODO: Set vectored thrust for yaw
-            if self._in_pid_optimization == "yaw":
-                self._pid_optimization_scoring.IncrementScore(self.CurrentHeadingRate, tilt_delta, self._pid_optimization_goal, self._journal_file)
-            if self._journal_file and self.JournalYaw:
-                self._journal_file.write(",%g,%g,%g"%(self.DesiredHeadingRate, self.CurrentHeadingRate, tilt_delta))
+            if self._yaw_control:
+                self.CurrentHeadingRate = self._sensors.HeadingRateChange()
+                if self._in_pid_optimization != "yaw":
+                    self._yawPID.SetSetPoint (self.DesiredHeadingRate)
+                tilt_delta = self._yawPID.Compute(self.CurrentHeadingRate, ms)
+                # TODO: Set vectored thrust for yaw
+                if self._in_pid_optimization == "yaw":
+                    self._pid_optimization_scoring.IncrementScore(self.CurrentHeadingRate, tilt_delta, self._pid_optimization_goal, self._journal_file)
+                if self._journal_file and self.JournalYaw:
+                    self._journal_file.write(",%g,%g,%g"%(self.DesiredHeadingRate, self.CurrentHeadingRate, tilt_delta))
+                self._yaw_control.Set(tilt_delta)
             if self._journal_file and (not self._in_pid_optimization):
                 self._journal_file.write("\n")
                 self._journal_flush_count += 1
                 if self._journal_flush_count >= 10:
                     self._journal_file.flush()
                     self._journal_flush_count = 0
-            self._yaw_control.Set(tilt_delta)
 
-            throttle_values = [self._throttle_baseline for i in range(6)]
+            throttle_values = [self._throttle_baseline + self._baseline_offset for i in range(6)]
             # Add pitch throttle offsets to front and rear engines
             throttle_values [0] += self._pitch_throttle_offset
             throttle_values [1] += self._pitch_throttle_offset
@@ -268,6 +275,8 @@ class AttitudeControlVTOL(FileConfig.FileConfig):
             throttle_values [1] += self._roll_throttle_offset
             throttle_values [3] += self._roll_throttle_offset * middle_engine_roll_contribution
             throttle_values [5] += self._roll_throttle_offset
+            throttle_values = [tv if tv >= 0.0 else 0.0 for tv in throttle_values]
+            throttle_values = [tv if tv <= 1.0 else 1.0 for tv in throttle_values]
             if middle_engine_roll_contribution < .7:
                 if takeoff:
                     # The middle engines are now substantially forward facing. Bring them up to 100%
@@ -280,6 +289,13 @@ class AttitudeControlVTOL(FileConfig.FileConfig):
                     throttle_values[3] = 0.0
             # Set the throttles
             self._throttle_controls.SetThrottles(throttle_values)
+
+    def ForceThrottleDown (self):
+        self._baseline_offset -= self.ThrottleDownIncrement
+        if self._baseline_offset <= -1.0:
+            return True
+        else:
+            return False
 
     def PIDOptimizationStart(self, which_pid, params, scoring_object, outfile):
         self._in_pid_optimization = which_pid

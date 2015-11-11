@@ -26,6 +26,7 @@ for p in sys.path:
         break
 else:
     sys.path.append (os.path.join ('Common'))
+    sys.path.append (os.path.join ('Test'))
 
 
 if '__main__' == __name__:
@@ -33,14 +34,13 @@ if '__main__' == __name__:
     opt.add_argument('airplane_config', help='The airplane configuration')
     opt.add_argument('flight_plan', help='The flight plan file to execute')
     opt.add_argument('-w', '--way-points', help='Way points')
-    opt.add_argument('-v', '--variables', default=None, help = 'File containing supplemental vars definitions')
+    opt.add_argument('-u', '--unit-test', default=None, help = 'File containing unit test responses')
     opt.add_argument('-r', '--replay', default=None, help = 'Specify log to replay in simulation')
     opt.add_argument('-l', '--log-prefix', default=None, help = 'Over-ride logging prefix')
     opt.add_argument('-m', '--home', default=None, help = 'Over-ride home directory for objects and procedures')
     opt.add_argument('-c', '--record', action='store_true', help = 'Create a recording in simulation')
     opt.add_argument('-p', '--pid', help = 'PID optimizer config file')
     opt.add_argument('--log-level', type=int, default=logging.WARNING, help = '1 = Maximum Logging. 100 = Absolute Silence. 40 = Errors only. 10 = Basic Debug')
-    opt.add_argument('-u', '--unit-test', action='store_true', help= 'Run a unit test on position functionality')
     args = opt.parse_args()
 
     if args.home:
@@ -64,6 +64,7 @@ if '__main__' == __name__:
 
 import Airplane, Globals
 import PIDOptimizer
+import UnitTestFixture
 
 if '__main__' == __name__:
     dist_path = '/usr/local/lib/python2.7/dist-packages'
@@ -128,9 +129,14 @@ if '__main__' == __name__:
         pid_scoring.Optimizer.StartOptimize()
         craft.SetPIDScoring(pid_scoring)
 
+    if args.unit_test:
+        UnitTestFixture.ReadResponses(args.unit_test)
+
     #craft.ChangeMode (Airplane.FLIGHT_MODE_AIRBORN)
     #craft._flight_control._throttle_control.Set(.5)
     craft.DispatchCommand (craft.FlightPlan[0])
     while True:
         craft.Update()
+        if args.unit_test:
+            UnitTestFixture.Update()
         time.sleep(.1)

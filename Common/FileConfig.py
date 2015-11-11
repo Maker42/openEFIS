@@ -126,7 +126,7 @@ class FileConfig:
                 del filelines[0]
                 if self._comment_action:
                     self._comment_action (args)
-            if len(args) == 1:
+            elif len(args) == 1:
                 if args[0] == element_name:
                     del filelines[0]
                     action (args, filelines)

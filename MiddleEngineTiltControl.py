@@ -23,15 +23,19 @@ class MiddleEngineTiltControl:
 
     def SetServoController(self, sc):
         self._controller = sc
-        self._limits = self._controller.GetLimits(self.Channel)
+        self._limits = self._controller.GetLimits(self.LeftChannel)
+        self._controller.SetChannel (self.LeftChannel, self._current_val + self._yaw)
+        self._controller.SetChannel (self.RightChannel, self._current_val - self._yaw)
 
     def SetYaw(self, yaw):
         self._yaw = yaw
+        self.Set(None)
 
     def Set(self, val):
-        self._current_val = val
-        self._controller.SetChannel (self.LeftChannel, val + self._yaw)
-        self._controller.SetChannel (self.RightChannel, val - self._yaw)
+        if val != None:
+            self._current_val = val
+        self._controller.SetChannel (self.LeftChannel, self._current_val + self._yaw)
+        self._controller.SetChannel (self.RightChannel, self._current_val - self._yaw)
 
     def GetCurrent(self):
         return self._current_val

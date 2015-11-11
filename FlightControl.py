@@ -238,7 +238,7 @@ class FlightControl(FileConfig.FileConfig):
         self._attitude_control.StopFlight()
         if self._journal_file:
             self._journal_file.close()
-        return self._desired_roll, self._desired_climb_rate, self._desired_pitch
+        return self._desired_pitch
 
     def Update(self):
         ms = util.millis(self._sensors.Time())
@@ -429,6 +429,8 @@ class FlightControl(FileConfig.FileConfig):
         self._flight_mode = SUBMODE_STRAIGHT
         if desired_altitude:
             self.DesiredAltitude = desired_altitude
+        else:
+            self.DesiredAltitude = self._sensors.Altitude()
         if desired_airspeed:
             self.DesiredAirSpeed = desired_airspeed
         if desired_heading == None:
