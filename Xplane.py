@@ -128,8 +128,7 @@ class XplaneSensors:
                 (0, "MagneticDeclination", "sim/flightmodel/position/magnetic_variation"),
                 (0, "TrueHeading", "sim/flightmodel/position/true_psi"),
                 (0, "SimTime", "sim/time/total_running_time_sec"),
-                (0, "hpath", "sim/flightmodel/position/hpath"),
-                (0, "beta", "sim/flightmodel/position/beta"),
+                (0, "GroundTrack", "sim/flightmodel/position/hpath")
                 ]
         self.previous_readings = [s[0] for s in self.sensor_suite]
         self.SamplesPerSecond = 10
@@ -259,13 +258,8 @@ class XplaneSensors:
 
     def GroundTrack(self):
         self.ProcessIncoming()
-        assert(self.sensor_suite[15][1] == "hpath")
+        assert(self.sensor_suite[15][1] == "GroundTrack")
         return (self.sensor_suite[15][0])
-
-    def beta(self):
-        self.ProcessIncoming()
-        assert(self.sensor_suite[16][1] == "beta")
-        return (self.sensor_suite[16][0])
 
     def ProcessIncoming(self):
         global control

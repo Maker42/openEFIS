@@ -50,6 +50,7 @@ class TakeoffControlVTOL(FileConfig.FileConfig):
         self._in_pid_optimization = ''
         self._pid_optimization_goal = 0
         self._pid_optimization_scoring = None
+        self._lifted_off = False
 
         # Computed private operating parameters
         self._desired_climb_rate = 0
@@ -92,11 +93,13 @@ class TakeoffControlVTOL(FileConfig.FileConfig):
     def initialize(self, filelines):
         self.InitializeFromFileLines(filelines)
         kp,ki,kd = self.AttPIDTuningParams
-        self._PitchPID = PID.PID(0, kp, ki, kd, PID.REVERSE, util.millis(self._sensors.Time()))
+        self._PitchPID = PID.PID(0, kp, ki, kd, PID.DIRECT, util.millis(self._sensors.Time()))
         self._RollPID = PID.PID(0, kp, ki, kd, PID.DIRECT, util.millis(self._sensors.Time()))
         mn,mx = self.AttPIDLimits
         self._PitchPID.SetOutputLimits (mn, mx)
         self._RollPID.SetOutputLimits (mn, mx)
+        self._PitchPID.SetSampleTime (self.AttPIDSampleTime)
+        self._RollPID.SetSampleTime (self.AttPIDSampleTime)
 
     # Notifies that the take off roll has accompished enough speed that flight controls
     # have responsibility and authority. Activates PIDs.
@@ -111,8 +114,7 @@ class TakeoffControlVTOL(FileConfig.FileConfig):
         self.RunwayAltitude = self._sensors.Altitude()
         self.DesiredAltitude = self.RunwayAltitude + self.TransitionAGL
         self._attitude_control.StartFlight(0.9)
-        self._PitchPID.SetMode (PID.AUTOMATIC, self.CurrentAirSpeed, self._sensors.AirSpeed())
-        self._RollPID.SetMode (PID.AUTOMATIC, self.CurrentAirSpeed, self._sensors.AirSpeed())
+        self._lifted_off = False
 
     def Stop(self):
         self._PitchPID.SetMode (PID.MANUAL, self.CurrentAirSpeed, self._sensors.AirSpeed())
@@ -134,13 +136,18 @@ class TakeoffControlVTOL(FileConfig.FileConfig):
                 (self._flight_mode == SUBMODE_STATIONARY and
                     self._sensors.Altitude() > self.RunwayAltitude + self.callback.GroundEffectHeight)):
             # If not following a course, keep the starting GPS position
+            if self._sensors.ClimbRate() > 0.0 and (not self._lifted_off):
+                self._lifted_off = True
+                self._PitchPID.SetMode (PID.AUTOMATIC, 0.0 ,0.0)
+                self._RollPID.SetMode (PID.AUTOMATIC, 0.0 ,0.0)
             desired_heading,distance,_ = util.TrueHeadingAndDistance ([self.CurrentPosition, self.DesiredPosition])
         
             desired_groundspeed = util.get_rate(0.0, distance * 60.0, self.MinutesPositionCorrection, self.MaxGroundSpeed)
             self.CurrentGroundSpeed = self._sensors.GroundSpeed()
-            relative_heading = self._sensors.beta()
+            ground_track = self._sensors.GroundTrack()
+            relative_heading = ground_track - self.CurrentHeading
             current_forward_speed = self.CurrentGroundSpeed * math.cos(relative_heading*util.M_PI/180.0)
-            current_side_speed = self.CurrentGroundSpeed * -math.sin(relative_heading*util.M_PI/180.0)
+            current_side_speed = self.CurrentGroundSpeed * math.sin(relative_heading*util.M_PI/180.0)
 
             current_true_heading = self.CurrentHeading + self.MagneticDeclination
             desired_relative_heading = desired_heading - current_true_heading
@@ -148,11 +155,15 @@ class TakeoffControlVTOL(FileConfig.FileConfig):
             desired_forward_speed = desired_groundspeed * math.cos(desired_relative_heading)
             desired_side_speed = desired_groundspeed * math.sin(desired_relative_heading)
             desired_relative_heading /= util.M_PI / 180.0
-            logger.log (3, "Ascend relative heading = %g/%g, forward = %g/%g, side=%g/%g"%(relative_heading, desired_relative_heading, current_forward_speed, desired_forward_speed, current_side_speed,desired_side_speed))
+            logger.log (3, "Ascend relative heading = %g(%g-%g)/%g(%g-%g), forward = %g/%g, side=%g/%g",
+                    relative_heading, ground_track, self.CurrentHeading,
+                    desired_relative_heading, desired_heading, current_true_heading,
+                    current_forward_speed, desired_forward_speed,
+                    current_side_speed,desired_side_speed)
 
             self._PitchPID.SetSetPoint(desired_forward_speed)
             self._RollPID.SetSetPoint(desired_side_speed)
-            self._desired_pitch = self._PitchPID.Compute(current_forward_speed, ms)
+            self._desired_pitch = -self._PitchPID.Compute(current_forward_speed, ms)
             self._desired_roll = self._RollPID.Compute(current_side_speed, ms)
 
             if self.CurrentAltitude >= self.DesiredAltitude:

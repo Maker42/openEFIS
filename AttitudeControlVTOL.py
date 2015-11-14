@@ -76,8 +76,8 @@ class AttitudeControlVTOL(FileConfig.FileConfig):
         self.YawPIDTuningParams = None
         self.ClimbRatePIDTuningParams = None
 
-        self.AttitudePIDLimits = (-.2,.2)
-        self.ClimbRatePIDLimits = (0.0,0.9)
+        self.AttitudePIDLimits = (-.3,.3)
+        self.ClimbRatePIDLimits = (0.0,0.8)
 
         self.AttitudeAchievementSeconds = 1.0
         self.MaxAttitudeRate = 7.0 # degrees per second
