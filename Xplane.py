@@ -128,7 +128,9 @@ class XplaneSensors:
                 (0, "MagneticDeclination", "sim/flightmodel/position/magnetic_variation"),
                 (0, "TrueHeading", "sim/flightmodel/position/true_psi"),
                 (0, "SimTime", "sim/time/total_running_time_sec"),
-                (0, "GroundTrack", "sim/flightmodel/position/hpath")
+                (0, "GroundTrack", "sim/flightmodel/position/hpath"),
+                (0, "WindSpeed", "sim/weather/wind_speed_kt[0]"),
+                (0, "WindDirection", "sim/weather/wind_direction_degt[0]")
                 ]
         self.previous_readings = [s[0] for s in self.sensor_suite]
         self.SamplesPerSecond = 10
@@ -147,35 +149,6 @@ class XplaneSensors:
             control.sock.sendto(pre + req, (control.xplane_host, control.xplane_port))
             dref_num += 1
 
-
-# Other data refs that might be of interest:
-#sim/cockpit/gyros/psi_ind_vac_pilot_degm	float	y	degrees_magnetic	The indicated magnetic heading on the panel for the pilot's side, vacuum driven
-#sim/flightmodel/position/elevation	double	n	meters	The elevation above MSL of the aircraft
-#sim/flightmodel/position/theta	float	y	degrees	The pitch relative to the plane normal to the Y axis in degrees - OpenGL coordinates
-#sim/flightmodel/position/phi	float	y	degrees	The roll of the aircraft in degrees - OpenGL coordinates
-#sim/flightmodel/position/psi	float	y	degrees	The true heading of the aircraft in degrees from the Z axis - OpenGL coordinates
-#sim/flightmodel/position/magpsi	float	n	degrees	DO NOT USE THIS
-#sim/flightmodel/position/true_theta	float	n	degrees	The pitch of the aircraft relative to the earth precisely below the aircraft
-
-#sim/flightmodel/position/alpha	float	n	degrees	The pitch relative to the flown path (angle of attack)
-#sim/flightmodel/position/vpath	float	n	degrees	The pitch the aircraft actually flies.  (vpath+alpha=theta)
-#sim/flightmodel/position/hpath	float	n	degrees	The heading the aircraft actually flies.  (hpath+beta=psi)
-#sim/flightmodel/position/indicated_airspeed2	float	y	kias	Air speed indicated - this takes into account air density and wind direction
-#sim/flightmodel/position/true_airspeed	float	n	meters/sec	Air speed true - this does not take into account air density at altitude!
-#sim/flightmodel/position/M	float	n	NM	The angular momentum of the aircraft (relative to flight axis).
-#sim/flightmodel/position/N	float	n	NM	The angular momentum of the aircraft (relative to flight axis)
-#sim/flightmodel/position/L	float	n	NM	The angular momentum of the aircraft (relative to flight axis)
-#sim/flightmodel/position/R	float	y	deg/sec	The yaw rotation rates (relative to the flight)
-#sim/flightmodel/position/P_dot	float	n	deg/sec2	The roll angular acceleration (relative to the flight)
-#sim/flightmodel/position/Q_dot	float	n	deg/sec2	The pitch angular acceleration (relative to the flight)
-#sim/flightmodel/position/R_dot	float	n	deg/sec2	The yaw angular acceleration rates (relative to the flight)
-#sim/flightmodel/position/Prad	float	y	rad/sec	The roll rotation rates (relative to the flight)
-#sim/flightmodel/position/Qrad	float	y	rad/sec	The pitch rotation rates (relative to the flight)
-#sim/flightmodel/position/Rrad	float	y	rad/sec	The yaw rotation rates (relative to the flight)
-#sim/flightmodel/position/q	float[4]	y	quaternion	A quaternion representing the rotation from local OpenGL coordinates to the aircrafts coordinates.
-#sim/flightmodel/position/vh_ind	float	n	meters/second	VVI (vertical velocity in meters per second)
-#sim/flightmodel/position/vh_ind_fpm2	float	y	fpm	VVI (vertical velocity in feet per second)
-#sim/flightmodel/position/y_agl	float	n	meters	AGL
         time.sleep(.5)
         self.ProcessIncoming()
         return
@@ -256,10 +229,21 @@ class XplaneSensors:
         assert(self.sensor_suite[14][1] == "SimTime")
         return self.sensor_suite[14][0]
 
+    # Actual flight path in true coordinates
     def GroundTrack(self):
         self.ProcessIncoming()
         assert(self.sensor_suite[15][1] == "GroundTrack")
         return (self.sensor_suite[15][0])
+
+    def WindSpeed(self):
+        self.ProcessIncoming()
+        assert(self.sensor_suite[16][1] == "WindSpeed")
+        return (self.sensor_suite[16][0])
+
+    def WindDirection(self):
+        self.ProcessIncoming()
+        assert(self.sensor_suite[17][1] == "WindDirection")
+        return (self.sensor_suite[17][0])
 
     def ProcessIncoming(self):
         global control

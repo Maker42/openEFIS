@@ -99,10 +99,15 @@ class Point3:
     def angle(self,  o):
         return math.acos(self.dot_product(o) / (self.norm() * o.norm()))
 
-    def mult(self,time):
-        self.x = self.x * time
-        self.y = self.y * time
-        self.z = self.z * time
+    def mult(self,time_or_vect):
+        if isinstance(time_or_vect,Point3):
+            self.x = self.x * time_or_vect.x
+            self.y = self.y * time_or_vect.y
+            self.z = self.z * time_or_vect.z
+        else:
+            self.x = self.x * time_or_vect
+            self.y = self.y * time_or_vect
+            self.z = self.z * time_or_vect
         
     def div(self,time):
         self.x = self.x / time

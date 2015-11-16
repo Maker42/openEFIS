@@ -17,8 +17,10 @@ import time, logging
 
 import PID, FileConfig
 
-import Xplane, SurfaceControl, AttitudeControl, FlightControl, AttitudeControlVTOL, TakeoffControlVTOL, LandingControlVTOL
+import Xplane, SurfaceControl, AttitudeControl, FlightControl, AttitudeControlVTOL
+import TakeoffControlVTOL, LandingControlVTOL, AttitudeVTOLEstimation
 import MiddleEngineTiltControl, VTOLYawControl, SolenoidControl
+import Spatial
 import UnitTestFixture
 
 logger=logging.getLogger(__name__)
@@ -34,6 +36,17 @@ class Airplane(FileConfig.FileConfig):
         self.MaxAirSpeed = 10       # nautical miles per Hour
         self.StallSpeed = 3         # KPH
         self.GroundEffectHeight = 15.0
+        self.WindResistanceCoefInVTOL = Spatial.Vector(10.0, 500.0, 0.0)
+        self.Mass = 3000.0
+        # Mass can have any units, so long as:
+        # WindResistanceCoef * knots^2 = Force (using compatible units with Mass)
+        # WindResistanceCoef * knots^2 / Mass must have units of nautical miles / s^2 (or knots / sec)
+        # Or in other words, the coefficients have the units
+        # Mass * knots / (knots^2 * sec) -- or --
+        # Mass / (knots * sec)
+        # Mass in the coefficient comes from the drag equation Fd = 1/2 * roe * v^2 * Cd * A
+        # where roe is the density of the fluid (air in this case). If you use this formula to figure
+        # this coefficient, roe should be in units of Mass / nautical mile ^ 3
 
         # Operating parameters:
         self.BatteryMinReserve = 30
@@ -63,6 +76,7 @@ class Airplane(FileConfig.FileConfig):
 
         self._attitude_control = None
         self._attitude_control_vtol = None
+        self._attitude_vtol_estimation = None
         self._flight_control = None
         self._ground_control = None
         self._takeoff_control = None
@@ -158,9 +172,11 @@ class Airplane(FileConfig.FileConfig):
                 and self._throttle_control):
             raise RuntimeError("Must initialize fundamental controls before takeoff control")
         if len(args) > 1 and args[1] == "TakeoffControlVTOL":
+            if not self._attitude_vtol_estimation:
+                self._attitude_vtol_estimation = AttitudeVTOLEstimation.AttitudeVTOLEstimation()
             self._takeoff_control = TakeoffControlVTOL.TakeoffControlVTOL(self._attitude_control_vtol,
                     self._middle_engine_tilt_control, self._VTOL_engine_release_control,
-                    self._sensors, self)
+                    self._sensors, self._attitude_vtol_estimation, self)
         else:
             self._takeoff_control = TakeoffControl.TakeoffControl(self._aileron_control,
                     self._rudder_control, self._elevator_control,
@@ -171,9 +187,11 @@ class Airplane(FileConfig.FileConfig):
         if not (self._attitude_control and self._throttle_control and self._sensors):
             raise RuntimeError("Must initialize fundamental controls before landing control")
         if len(args) > 1 and args[1] == "LandingControlVTOL":
+            if not self._attitude_vtol_estimation:
+                self._attitude_vtol_estimation = AttitudeVTOLEstimation.AttitudeVTOLEstimation()
             self._landing_control = LandingControlVTOL.LandingControlVTOL(self._attitude_control_vtol,
                     self._middle_engine_tilt_control, self._forward_engine_release_control,
-                    self._sensors, self)
+                    self._sensors, self._attitude_vtol_estimation, self)
         else:
             self._landing_control = LandingControl.LandingControl(self._attitude_control,
                     self._throttle_control, self._sensors, self)

@@ -174,6 +174,14 @@ class UnitTestSensors:
         assert(self.sensor_suite[14][1] == "OuterEnginePosition")
         return self.sensor_suite[14][0]
 
+    def WindSpeed(self):
+        # TODO: Implement
+        return 0.0
+
+    def WindDirection(self):
+        # TODO: Implement
+        return 0.0
+
     def SetSensor(self, name, value):
         for snum in range(len(self.sensor_suite)):
             if name == self.sensor_suite[snum][1]:

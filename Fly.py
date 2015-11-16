@@ -131,6 +131,7 @@ if '__main__' == __name__:
 
     if args.unit_test:
         UnitTestFixture.ReadResponses(args.unit_test)
+        UnitTestFixture.Update()
 
     #craft.ChangeMode (Airplane.FLIGHT_MODE_AIRBORN)
     #craft._flight_control._throttle_control.Set(.5)

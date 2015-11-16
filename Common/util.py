@@ -20,6 +20,14 @@ import Spatial
 logger=logging.getLogger(__name__)
 
 M_PI = math.pi
+NAUT_MILES_PER_METER = .0005399568
+# m / s^2 * nm / m
+# nm / s^2 * 3600 s / hour
+# nm / s * h
+# knots / s
+G_IN_KNOTS_PER_SEC = 9.98 * NAUT_MILES_PER_METER * 3600.0
+RAD_DEG = M_PI / 180.0
+DEG_RAD = 180.0 / M_PI
 
 def read_cont_expr (first_args, lines):
     ret = None
@@ -80,7 +88,7 @@ def TrueHeadingAndDistance(course, periodic_logging=None, frequency=10):
     relative_lng_length = GetRelLng(lat1)
     dlng *= relative_lng_length
 
-    heading = math.atan2(dlng, dlat) * 180 / M_PI
+    heading = atan_globe(dlng, dlat) * 180 / M_PI
     distance = math.sqrt(dlng * dlng + dlat * dlat) * 60.0      # Multiply by 60 to convert from degrees to nautical miles.
     if periodic_logging:
         log_occasional_info (periodic_logging, "course (%g,%g)->(%g,%g) d=(%g,%g), rel_lng=%g, distance=%g"%(
@@ -173,3 +181,7 @@ def AddPosition(position, distance, direction, rel_lng = 0.0):
     dlng = disatnce * math.cos(direction) * rel_lng / 60.0
     position = (position[0] + dlng, position[1] + dlat)
     return position
+
+
+def atan_globe(lng, lat):
+    return math.atan2(lng,lat)

@@ -29,7 +29,7 @@ SUBMODE_DESCEND="descend"
 SUBMODE_TOUCHDOWN="touchdown"
 
 class LandingControlVTOL(FileConfig.FileConfig):
-    def __init__(self, att_cont, middle_engine_tilt, forward_engine_release, sensors, callback):
+    def __init__(self, att_cont, middle_engine_tilt, forward_engine_release, sensors, attitude_vtol_estimation, callback):
         # Dynamic Input parameters
         self.DesiredAltitude = 0
         self.DesiredAirSpeed = 0
@@ -70,11 +70,6 @@ class LandingControlVTOL(FileConfig.FileConfig):
         self.SecondsHeadingCorrection = 2.0
         self.MaxAttitudeChangePerSample = 1.0
         self.MaxGroundSpeed = 5.0              # Max speed to correct position
-        self._PitchPID = None
-        self._RollPID = None
-        self.AttPIDLimits = (-20.0, 20.0)         # degrees
-        self.AttPIDTuningParams = None
-        self.AttPIDSampleTime = 1000
         self.PositioningAGL = 500.0
 
         self.MinutesPositionCorrection = 0.2
@@ -83,6 +78,7 @@ class LandingControlVTOL(FileConfig.FileConfig):
         self.MaxHeadingRate = 15.0
 
         self._attitude_control = att_cont
+        self._attitude_vtol_estimation = attitude_vtol_estimation
         self._sensors = sensors
         self._engine_tilt = middle_engine_tilt
         self._forward_engine_release = forward_engine_release
@@ -92,14 +88,6 @@ class LandingControlVTOL(FileConfig.FileConfig):
 
     def initialize(self, filelines):
         self.InitializeFromFileLines(filelines)
-        kp,ki,kd = self.AttPIDTuningParams
-        self._PitchPID = PID.PID(0, kp, ki, kd, PID.DIRECT, util.millis(self._sensors.Time()))
-        self._RollPID = PID.PID(0, kp, ki, kd, PID.DIRECT, util.millis(self._sensors.Time()))
-        mn,mx = self.AttPIDLimits
-        self._PitchPID.SetOutputLimits (mn, mx)
-        self._RollPID.SetOutputLimits (mn, mx)
-        self._PitchPID.SetSampleTime (self.AttPIDSampleTime)
-        self._RollPID.SetSampleTime (self.AttPIDSampleTime)
 
     # Notifies that the take off roll has accompished enough speed that flight controls
     # have responsibility and authority. Activates PIDs.
@@ -114,14 +102,10 @@ class LandingControlVTOL(FileConfig.FileConfig):
         #Commented out for xplane simulation: self._flight_mode = SUBMODE_TRANSITION_PRIME
         self._flight_mode = SUBMODE_DESCEND  # Jump past the transition steps for xplane simulation. Delete me!
         self.DesiredAltitude = self.RunwayAltitude
-        self._PitchPID.SetMode (PID.AUTOMATIC, self.CurrentAirSpeed, 0.0)
-        self._RollPID.SetMode (PID.AUTOMATIC, self.CurrentAirSpeed, 0.0)
         #Commented out for xplane simulation:self._forward_engine_release.Set(1)
         self._attitude_control.StartFlight(0.64)
 
     def Stop(self):
-        self._PitchPID.SetMode (PID.MANUAL, self.CurrentAirSpeed, self._sensors.AirSpeed())
-        self._RollPID.SetMode (PID.MANUAL, self.CurrentAirSpeed, self._sensors.AirSpeed())
         self._attitude_control.StopFlight()
         if self._journal_file:
             self._journal_file.close()
@@ -136,27 +120,11 @@ class LandingControlVTOL(FileConfig.FileConfig):
         middle_engine_roll_contribution = 1.0
         outer_engine_movement = 0
         if self._flight_mode == SUBMODE_DESCEND or self._flight_mode == SUBMODE_POSITION:
-            desired_heading,distance,_ = util.TrueHeadingAndDistance ([self.CurrentPosition, self.DesiredPosition])
-        
-            desired_groundspeed = util.get_rate(0.0, distance * 60.0, self.MinutesPositionCorrection, self.MaxGroundSpeed)
-            self.CurrentGroundSpeed = self._sensors.GroundSpeed()
-            ground_track = self._sensors.GroundTrack()
-            relative_heading = ground_track - self.CurrentHeading
-            current_forward_speed = self.CurrentGroundSpeed * math.cos(relative_heading*util.M_PI/180.0)
-            current_side_speed = self.CurrentGroundSpeed * math.sin(relative_heading*util.M_PI/180.0)
-
-            current_true_heading = self.CurrentHeading + self.MagneticDeclination
-            desired_relative_heading = desired_heading - current_true_heading
-            desired_relative_heading *= util.M_PI / 180.0
-            desired_forward_speed = desired_groundspeed * math.cos(desired_relative_heading)
-            desired_side_speed = desired_groundspeed * math.sin(desired_relative_heading)
-            desired_relative_heading /= util.M_PI / 180.0
-            logger.log (3, "Descend relative heading = %g/%g, forward = %g/%g, side=%g/%g"%(relative_heading, desired_relative_heading, current_forward_speed, desired_forward_speed, current_side_speed,desired_side_speed))
-
-            self._PitchPID.SetSetPoint(desired_forward_speed)
-            self._RollPID.SetSetPoint(desired_side_speed)
-            self._desired_pitch = -self._PitchPID.Compute(current_forward_speed, ms)
-            self._desired_roll = self._RollPID.Compute(current_side_speed, ms)
+            self._desired_pitch, self._desired_roll = (
+                    self._attitude_vtol_estimation.EstimateNextAttitude(self.DesiredPosition,
+                        self.MinutesPositionCorrection, self.MaxGroundSpeed, 
+                        self._sensors, self._callback)
+                    )
 
             logger.debug("Checking touchdown mode: %g / %g+%g", self.CurrentAltitude, self.RunwayAltitude, self._callback.GroundEffectHeight)
             if self.CurrentAltitude <= self.RunwayAltitude + self._callback.GroundEffectHeight:
@@ -204,8 +172,6 @@ class LandingControlVTOL(FileConfig.FileConfig):
                     self.compute_heading_rate(hd)
 
                     outer_engine_movement = 0
-                    self._PitchPID.SetMode (PID.AUTOMATIC, self.CurrentAirSpeed, 0.0)
-                    self._RollPID.SetMode (PID.AUTOMATIC, self.CurrentAirSpeed, 0.0)
                 else:
                     self._engine_tilt.Set(self.TransitionSteps[self._transition_step][0])
         if self._journal_file:
@@ -254,14 +220,7 @@ class LandingControlVTOL(FileConfig.FileConfig):
             self._journal_flush_count = 0
             self.JournalAtt = False
             self.JournalThrottle = False
-            if self._in_pid_optimization == "pitch":
-                self._PitchPID.SetTunings (params['P'], params['I'], params['D'])
-                self._PitchPID.SetSetPoint (self._pid_optimization_goal)
-            if self._in_pid_optimization == "roll":
-                self._RollPID.SetTunings (params['P'], params['I'], params['D'])
-                self._RollPID.SetSetPoint (self._pid_optimization_goal)
-            else:
-                raise RuntimeError ("Unknown PID optimization target: %s"%which_pid)
+            raise RuntimeError ("Unknown PID optimization target: %s"%which_pid)
             return step
 
     def PIDOptimizationNext(self):
@@ -274,23 +233,11 @@ class LandingControlVTOL(FileConfig.FileConfig):
                 self.PIDOptimizationStop()
                 return self._pid_optimization_scoring.GetScore()
             self._pid_optimization_goal = step.input_value
-            if self._in_pid_optimization == "pitch":
-                self._PitchPID.SetSetPoint (self._pid_optimization_goal)
-            if self._in_pid_optimization == "roll":
-                self._RollPID.SetSetPoint (self._pid_optimization_goal)
-            else:
-                raise RuntimeError ("Unknown PID optimization target: %s"%which_pid)
+            raise RuntimeError ("Unknown PID optimization target: %s"%which_pid)
             return step
 
     def PIDOptimizationStop(self):
-        if self._in_pid_optimization == "pitch":
-            kp,ki,kd = self.AttPIDTuningParams
-            self._PitchPID.SetTunings (kp,ki,kd)
-        if self._in_pid_optimization == "roll":
-            kp,ki,kd = self.AttPIDTuningParams
-            self._RollPID.SetTunings (kp,ki,kd)
-        else:
-            raise RuntimeError ("Unknown PID optimization target: %s"%which_pid)
+        raise RuntimeError ("Unknown PID optimization target: %s"%which_pid)
         self._in_pid_optimization = ""
         if self._journal_file:
             self._journal_file.close()
