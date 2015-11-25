@@ -68,7 +68,7 @@ class FlightControl(FileConfig.FileConfig):
         self.AltitudeAchievementMinutes = 1.2
         self.ClimbRateLimits = (-1000.0, 1000.0)        # feet / minute
         self.SwoopClimbRateLimits = (-5000.0, 5000.0)   # feet / minute
-        self.PitchPIDLimits = (-20.0, 20.0)         # degrees
+        self.PitchPIDLimits = [(0,20.0), (45,0)]  # (roll, max degrees)
 
         self.PitchPIDSampleTime = 1000
         self.ThrottlePIDSampleTime = 1000
@@ -88,6 +88,7 @@ class FlightControl(FileConfig.FileConfig):
 
         self.MaxPitchChangePerSample = 1.0
         self.TurnRadius = 1.0/300.0         # 1/5 of a nautical mile
+        self.ClimbRateCurve = None
 
         # Will Use one of the following 2 PIDS to request pitch angle:
         # Input: Current Climb Rate; SetPoint: Desired Climb Rate; Output: Desired Pitch Attitude
@@ -110,12 +111,16 @@ class FlightControl(FileConfig.FileConfig):
 
         kp,ki,kd = self.ClimbPitchPIDTuningParams
         self._climbPitchPID = PID.PID(0, kp, ki, kd, PID.DIRECT, ms)
-        mn,mx = self.PitchPIDLimits
+        if isinstance(self.PitchPIDLimits,tuple):
+            mn,mx = self.PitchPIDLimits
+        else:
+            _,mx = self.PitchPIDLimits[0]
+            mn = -mx
+        self._min_pitch = mn
         self._climbPitchPID.SetOutputLimits (mn, mx)
 
         kp,ki,kd = self.AirspeedPitchPIDTuningParams
         self._airspeedPitchPID = PID.PID(0, kp, ki, kd, PID.DIRECT, ms)
-        mn,mx = self.PitchPIDLimits
         self._airspeedPitchPID.SetOutputLimits (mn, mx)
 
         kp,ki,kd = self.ThrottlePIDTuningParams
@@ -186,7 +191,7 @@ class FlightControl(FileConfig.FileConfig):
             # Turn on climb rate Pitch PID
             if self._in_pid_optimization != "airspeed_pitch":
                 self._airspeedPitchPID.SetSetPoint (self.MinClimbAirSpeed)
-            self._airspeedPitchPID.SetMode (PID.AUTOMATIC, self.CurrentAirSpeed, self._sensors.Pitch())
+            self._airspeedPitchPID.SetMode (PID.AUTOMATIC, self.CurrentAirSpeed, -self._sensors.Pitch())
             self._current_pitch_mode = "airspeed"
 
     def SelectClimbratePitch(self):
@@ -202,8 +207,8 @@ class FlightControl(FileConfig.FileConfig):
             self._current_pitch_mode = "climb"
 
     def UpdateAirspeedPitch(self, ms):
-        self._set_pitch_pid_limits(self.PitchPIDLimits, self._airspeedPitchPID)
-        desired_pitch = self._airspeedPitchPID.Compute (self.CurrentAirSpeed, ms)
+        self._set_pitch_pid_limits(self.PitchPIDLimits, self._airspeedPitchPID, True)
+        desired_pitch = -self._airspeedPitchPID.Compute (self.CurrentAirSpeed, ms)
         if self._in_pid_optimization == "airspeed_pitch":
             self._pid_optimization_scoring.IncrementScore(self.CurrentAirSpeed, desired_pitch, self._pid_optimization_goal, self._journal_file)
         if self._journal_file and self.JournalPitch:
@@ -221,15 +226,32 @@ class FlightControl(FileConfig.FileConfig):
             self._journal_file.write(",%g,%g,%g"%(self._desired_climb_rate, self.CurrentClimbRate, desired_pitch))
         return desired_pitch
 
-    def _set_pitch_pid_limits(self, absolute_limits, pid):
-        amn,amx = absolute_limits
-        rmn = self._desired_pitch - self.MaxPitchChangePerSample
-        rmx = self._desired_pitch + self.MaxPitchChangePerSample
+    def _set_pitch_pid_limits(self, absolute_limits, pid, invert=False):
+        amn,amx = self._find_pitch_limits(absolute_limits)
+        if invert:
+            multiplier = -1
+            temp = -amx
+            amx = -amn
+            amn = temp
+        else:
+            multiplier = 1
+        rmn = multiplier * self._desired_pitch - self.MaxPitchChangePerSample
+        rmx = multiplier * self._desired_pitch + self.MaxPitchChangePerSample
         if rmn < amn:
             rmn = amn
         if rmx > amx:
             rmx = amx
+        if rmn > rmx:
+            rmn = rmx - 1.0
+        logger.log (5, "pitch limits are %g,%g", rmn, rmx)
         pid.SetOutputLimits(rmn, rmx)
+
+    def _find_pitch_limits(self, absolute_limits):
+        if isinstance(absolute_limits,tuple):
+            return absolute_limits
+        roll = abs(self._sensors.Roll())
+        max_pitch = util.rate_curve(roll, absolute_limits)
+        return self._min_pitch,max_pitch
 
     def Stop(self):
         self._throttlePID.SetMode (PID.MANUAL, self.CurrentAirSpeed, self._throttle_control.GetCurrent())
@@ -295,6 +317,7 @@ class FlightControl(FileConfig.FileConfig):
 
         self.CurrentAltitude = self._sensors.Altitude()
         self._desired_climb_rate = self.get_climb_rate()
+        logger.debug("Desired Climb Rate %g - %g ==> %g", self.DesiredAltitude, self.CurrentAltitude, self._desired_climb_rate)
 
         self.CurrentClimbRate = self._sensors.ClimbRate()
         self._desired_pitch = self.SetPitch(ms)
@@ -310,16 +333,23 @@ class FlightControl(FileConfig.FileConfig):
 
     def get_climb_rate(self):
         altitude_error = self.DesiredAltitude - self.CurrentAltitude
-        climb_rate = altitude_error / self.AltitudeAchievementMinutes
-        if self._flight_mode == SUBMODE_SWOOP_DOWN:
-            limits = self.SwoopClimbRateLimits
+        if self.ClimbRateCurve != None:
+            ret = util.rate_curve(abs(altitude_error), self.ClimbRateCurve)
+            logger.log (5, "Climb rate curve %g ==> %g", altitude_error, ret)
+            if altitude_error < 0:
+                ret *= -1
         else:
-            limits = self.ClimbRateLimits
-        if climb_rate < limits[0]:
-            climb_rate = limits[0]
-        elif climb_rate > limits[1]:
-            climb_rate = limits[1]
-        return climb_rate
+            climb_rate = altitude_error / self.AltitudeAchievementMinutes
+            if self._flight_mode == SUBMODE_SWOOP_DOWN:
+                limits = self.SwoopClimbRateLimits
+            else:
+                limits = self.ClimbRateLimits
+            if climb_rate < limits[0]:
+                climb_rate = limits[0]
+            elif climb_rate > limits[1]:
+                climb_rate = limits[1]
+            ret = climb_rate
+        return ret
 
     # Compute a good self._desired_heading_rate_change based on the course, speed, heading and position
     def compute_heading_from_course(self):
