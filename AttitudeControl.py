@@ -73,8 +73,7 @@ class AttitudeControl(FileConfig.FileConfig):
         self.YawPIDTuningParams = list()
         self.RollRatePIDTuningParams = list()
 
-        self.AttitudeAchievementSeconds = 3.0
-        self.MaxRollRate = 7.0 # degrees per second
+        self.RollRateCurve = [(0.0, 0.0), (3.0, 1.0), (10.0, 10.0)] 
 
         self.RudderAileronRatio = .2
         self.RollPitchRatio = .025
@@ -180,6 +179,14 @@ class AttitudeControl(FileConfig.FileConfig):
                 kp,ki,kd = self.GetTunings (self.PitchPIDTuningParams)
                 self._pitchPID.SetTunings (kp, ki, kd)
 
+        self.CurrentYaw = self._sensors.Yaw()
+        self.CurrentRoll = self._sensors.Roll()
+        self.CurrentPitch = self._sensors.Pitch()
+        logger.log (5, "Attitude Control: pitch=%g/%g, roll=%g/%g, yaw = %g/%g",
+                self.CurrentPitch, desired_pitch,
+                self.CurrentRoll, desired_roll,
+                self.CurrentYaw, desired_yaw)
+
         ms = util.millis(self._sensors.Time())
         if self._journal_file:
             self._journal_file.write(str(ms))
@@ -197,7 +204,6 @@ class AttitudeControl(FileConfig.FileConfig):
         if self._in_pid_optimization != "pitch":
             desired_pitch = self.DesiredPitch + self.CurrentRoll * self.RollPitchRatio
             self._pitchPID.SetSetPoint (desired_pitch)
-        self.CurrentPitch = self._sensors.Pitch()
         elevator_value = self._pitchPID.Compute(self.CurrentPitch, ms)
         self._elevator_control.Set (elevator_value)
         if self._in_pid_optimization == "pitch":
@@ -205,7 +211,6 @@ class AttitudeControl(FileConfig.FileConfig):
         if self._journal_file and self.JournalPitch:
             self._journal_file.write(",%g,%g,%g"%(desired_pitch, self.CurrentPitch, elevator_value))
 
-        self.CurrentYaw = self._sensors.Yaw()
         if self._in_pid_optimization != "yaw":
             self._yawPID.SetSetPoint (self.DesiredYaw)
         rudder_value = self._yawPID.Compute(self.CurrentYaw, ms)
@@ -222,8 +227,7 @@ class AttitudeControl(FileConfig.FileConfig):
                 self._journal_flush_count = 0
 
     def get_roll_rate(self):
-        self.CurrentRoll = self._sensors.Roll()
-        return util.get_rate(self.CurrentRoll, self.DesiredRoll, self.AttitudeAchievementSeconds, self.MaxRollRate)
+        return util.rate_curve(self.DesiredRoll - self.CurrentRoll, self.RollRateCurve)
 
     # Returns how much the rudders should be offset to approximate coordinated flight,
     #  given the current aileron deflection

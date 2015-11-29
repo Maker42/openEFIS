@@ -69,10 +69,9 @@ class LandingControlVTOL(FileConfig.FileConfig):
         # correction (within the limits of roll)
         self.SecondsHeadingCorrection = 2.0
         self.MaxAttitudeChangePerSample = 1.0
-        self.MaxGroundSpeed = 5.0              # Max speed to correct position
         self.PositioningAGL = 500.0
 
-        self.MinutesPositionCorrection = 0.2
+        self.CorrectionCurve = [(0.0, 0.0), (5.0, 0.2), (10.0, 1.0), (40.0, 5.0)]
         self.TransitionSteps = list()           # List of forward thrust vector angles (0 = up, 90 = forward) and minimum airspeeds
         self.HeadingAchievementSeconds = 2.0
         self.MaxHeadingRate = 15.0
@@ -109,6 +108,7 @@ class LandingControlVTOL(FileConfig.FileConfig):
         self._attitude_control.StopFlight()
         if self._journal_file:
             self._journal_file.close()
+        self._attitude_vtol_estimation.Stop()
         return self._desired_pitch
 
     def Update(self):
@@ -122,7 +122,7 @@ class LandingControlVTOL(FileConfig.FileConfig):
         if self._flight_mode == SUBMODE_DESCEND or self._flight_mode == SUBMODE_POSITION:
             self._desired_pitch, self._desired_roll = (
                     self._attitude_vtol_estimation.EstimateNextAttitude(self.DesiredPosition,
-                        self.MinutesPositionCorrection, self.MaxGroundSpeed, 
+                        self.CorrectionCurve,
                         self._sensors, self._callback)
                     )
 

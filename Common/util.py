@@ -175,6 +175,8 @@ def get_rate(current, desired, time_divisor, limits):
 
 def rate_curve(x, curve_pieces):
     last_piece = 0
+    sign = 1 if x >= 0 else -1
+    x = abs(x)
     for piece in range(1,len(curve_pieces)):
         if x >= curve_pieces[last_piece][0] and x < curve_pieces[piece][0]:
             x0 = curve_pieces[last_piece][0]
@@ -186,10 +188,10 @@ def rate_curve(x, curve_pieces):
                 y = xpiece * (y1 - y0) + y0
                 logger.log(3, "rate_curve: x=%g [%g,%g]==> %g ; y = %g [%g,%g]",
                         x, x0, x1, xpiece, y, y0, y1)
-                return y
+                return sign * y
         last_piece = piece
     else:
-        return curve_pieces[-1][1]
+        return sign * curve_pieces[-1][1]
 
 def AddPosition(position, distance, direction, rel_lng = 0.0):
     if not rel_lng:

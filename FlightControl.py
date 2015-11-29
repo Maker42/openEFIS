@@ -76,11 +76,9 @@ class FlightControl(FileConfig.FileConfig):
         self.ClimbPitchPIDTuningParams = None
         self.AirspeedPitchPIDTuningParams = None
         self.ThrottlePIDTuningParams = None
+        self.RollCurve = [(0.0, 0.0), (5.0, 5.0), (10.0, 20.0), (20.0, 30.0)]
 
         self.HsiFactor = 10.0
-        # RollFactor: degrees roll per (degrees heading change / second)
-        # 30 degrees roll standard turn is about 180 degrees / minute, or 3 degrees per second
-        self.RollFactor = 10.0
         self.MaxRoll = 30.0
         # SecondsHeadingCorrection: How many seconds do we want to consume to achieve a desired heading
         # correction (within the limits of roll)
@@ -295,10 +293,9 @@ class FlightControl(FileConfig.FileConfig):
                             self._throttle_control.GetCurrent())
 
             if self._flight_mode == SUBMODE_STRAIGHT:
-                self.compute_heading_rate(self.DesiredTrueHeading)
+                roll = self.compute_roll(self.DesiredTrueHeading)
             else:
-                self.compute_heading_from_course()
-            roll = self._desired_heading_rate_change * self.RollFactor
+                roll = self.compute_roll_from_course()
             if abs(roll) > self.MaxRoll:
                 roll = self.MaxRoll if roll > 0 else -self.MaxRoll
             self._desired_roll = roll
@@ -334,10 +331,8 @@ class FlightControl(FileConfig.FileConfig):
     def get_climb_rate(self):
         altitude_error = self.DesiredAltitude - self.CurrentAltitude
         if self.ClimbRateCurve != None:
-            ret = util.rate_curve(abs(altitude_error), self.ClimbRateCurve)
+            ret = util.rate_curve(altitude_error, self.ClimbRateCurve)
             logger.log (5, "Climb rate curve %g ==> %g", altitude_error, ret)
-            if altitude_error < 0:
-                ret *= -1
         else:
             climb_rate = altitude_error / self.AltitudeAchievementMinutes
             if self._flight_mode == SUBMODE_SWOOP_DOWN:
@@ -352,9 +347,9 @@ class FlightControl(FileConfig.FileConfig):
         return ret
 
     # Compute a good self._desired_heading_rate_change based on the course, speed, heading and position
-    def compute_heading_from_course(self):
+    def compute_roll_from_course(self):
         pos = self._sensors.Position()
-        course_heading = util.TrueHeading(self.DesiredCourse, "compute_heading_from_course TrueHeading:", 100)
+        course_heading = util.TrueHeading(self.DesiredCourse, "compute_roll_from_course TrueHeading:", 100)
         heading_to_dest = util.TrueHeading ([pos, self.DesiredCourse[1]])
         heading_error = (heading_to_dest - course_heading)
         # Handle wrap around
@@ -369,14 +364,14 @@ class FlightControl(FileConfig.FileConfig):
             # TODO: Signal back to flight director of way off course
             correction_heading = 90 if correction_heading > 0 else -90
         intercept_heading = course_heading + correction_heading
-        #util.log_occasional_info("compute_heading_from_course",
+        #util.log_occasional_info("compute_roll_from_course",
         #        "cur_pos = (%g,%g), to=(%g,%g), course_h=%g, h_dest=%g, h_err = %g, cor=%g, intercept=%g"%(
         #            pos[0], pos[1],
         #            self.DesiredCourse[1][0], self.DesiredCourse[1][1],
         #            course_heading, heading_to_dest, heading_error, correction_heading, intercept_heading), 100)
-        self.compute_heading_rate(intercept_heading)
+        self.compute_roll(intercept_heading)
 
-    def compute_heading_rate(self, intercept_heading):
+    def compute_roll(self, intercept_heading):
         heading_error = intercept_heading - self.CurrentTrueHeading
         # Handle wrap around
         if heading_error > 180:
@@ -384,7 +379,8 @@ class FlightControl(FileConfig.FileConfig):
         elif heading_error < -180:
             heading_error += 360
         # heading rate change in degrees per second
-        self._desired_heading_rate_change = heading_error / self.SecondsHeadingCorrection
+        ret = util.rate_curve (heading_error, self.RollCurve)
+        return ret
 
     def FollowCourse(self, course, alt):
         self._flight_mode = SUBMODE_COURSE
