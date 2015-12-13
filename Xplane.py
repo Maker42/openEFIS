@@ -130,7 +130,8 @@ class XplaneSensors:
                 (0, "SimTime", "sim/time/total_running_time_sec"),
                 (0, "GroundTrack", "sim/flightmodel/position/hpath"),
                 (0, "WindSpeed", "sim/weather/wind_speed_kt[0]"),
-                (0, "WindDirection", "sim/weather/wind_direction_degt[0]")
+                (0, "WindDirection", "sim/weather/wind_direction_degt[0]"),
+                (0, "AGL", "sim/flightmodel/position/y_agl"),
                 ]
         self.previous_readings = [s[0] for s in self.sensor_suite]
         self.SamplesPerSecond = 10
@@ -244,6 +245,11 @@ class XplaneSensors:
         self.ProcessIncoming()
         assert(self.sensor_suite[17][1] == "WindDirection")
         return (self.sensor_suite[17][0])
+
+    def AGL(self):
+        self.ProcessIncoming()
+        assert(self.sensor_suite[18][1] == "AGL")
+        return (self.sensor_suite[18][0])
 
     def ProcessIncoming(self):
         global control

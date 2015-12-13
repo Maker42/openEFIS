@@ -71,7 +71,7 @@ class LandingControlVTOL(FileConfig.FileConfig):
         self.MaxAttitudeChangePerSample = 1.0
         self.PositioningAGL = 500.0
 
-        self.CorrectionCurve = [(0.0, 0.0), (5.0, 0.2), (10.0, 1.0), (40.0, 5.0)]
+        self.CorrectionCurve = [(0.0, 0.0), (5.0, 0.2), (10.0, 0.5), (40.0, 1.0)]
         self.TransitionSteps = list()           # List of forward thrust vector angles (0 = up, 90 = forward) and minimum airspeeds
         self.HeadingAchievementSeconds = 2.0
         self.MaxHeadingRate = 15.0
@@ -122,12 +122,12 @@ class LandingControlVTOL(FileConfig.FileConfig):
         if self._flight_mode == SUBMODE_DESCEND or self._flight_mode == SUBMODE_POSITION:
             self._desired_pitch, self._desired_roll = (
                     self._attitude_vtol_estimation.EstimateNextAttitude(self.DesiredPosition,
-                        self.CorrectionCurve,
-                        self._sensors, self._callback)
+                        self.CorrectionCurve, self._sensors)
                     )
 
-            logger.debug("Checking touchdown mode: %g / %g+%g", self.CurrentAltitude, self.RunwayAltitude, self._callback.GroundEffectHeight)
-            if self.CurrentAltitude <= self.RunwayAltitude + self._callback.GroundEffectHeight:
+            agl = self._sensors.AGL()
+            logger.debug("Checking touchdown mode: %g / %g", agl, self._callback.GroundEffectHeight)
+            if agl < 0.5:
                 self._flight_mode = SUBMODE_TOUCHDOWN
                 self._desired_pitch = 0.0
                 self._desired_roll = 0.0

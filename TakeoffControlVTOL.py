@@ -73,10 +73,13 @@ class TakeoffControlVTOL(FileConfig.FileConfig):
         self.MaxAttitudeChangePerSample = 1.0
 
         self.TransitionAGL = 700.0
-        self.CorrectionCurve = [(0.0, 0.0), (5.0, 0.2), (10.0, 1.0), (40.0, 5.0)]
+        self.CorrectionCurve = [(0.0, 0.0), (5.0, 0.2), (10.0, 0.5), (40.0, 1.0)]
         self.TransitionSteps = list()           # List of forward thrust vector angles (0 = up, 90 = forward) and minimum airspeeds
         self.HeadingAchievementSeconds = 2.0
         self.MaxHeadingRate = 15.0
+        self.PitchPIDParameters = (.005, .005, 0.0)
+        self.PitchPIDSamplePeriod = 1000
+        self.PitchPIDLimits = (-0.2, 0.2)
 
         self._attitude_control = att_cont
         self._sensors = sensors
@@ -89,6 +92,8 @@ class TakeoffControlVTOL(FileConfig.FileConfig):
 
     def initialize(self, filelines):
         self.InitializeFromFileLines(filelines)
+        self._attitude_vtol_estimation.initialize(self.PitchPIDParameters, self.PitchPIDSamplePeriod,
+                self.PitchPIDLimits, util.millis(self._sensors.Time()))
 
     # Notifies that the take off roll has accompished enough speed that flight controls
     # have responsibility and authority. Activates PIDs.
@@ -125,8 +130,7 @@ class TakeoffControlVTOL(FileConfig.FileConfig):
             # If not following a course, keep the starting GPS position
             self._desired_pitch, self._desired_roll = (
                     self._attitude_vtol_estimation.EstimateNextAttitude(self.DesiredPosition,
-                        self.CorrectionCurve,
-                        self._sensors, self._callback)
+                        self.CorrectionCurve, self._sensors)
                     )
 
             if self.CurrentAltitude >= self.DesiredAltitude:
