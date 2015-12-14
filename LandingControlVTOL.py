@@ -100,7 +100,7 @@ class LandingControlVTOL(FileConfig.FileConfig):
 
         #Commented out for xplane simulation: self._flight_mode = SUBMODE_TRANSITION_PRIME
         self._flight_mode = SUBMODE_DESCEND  # Jump past the transition steps for xplane simulation. Delete me!
-        self.DesiredAltitude = self.RunwayAltitude
+        self.DesiredAltitude = self.RunwayAltitude - 20.0
         #Commented out for xplane simulation:self._forward_engine_release.Set(1)
         self._attitude_control.StartFlight(0.64)
 
