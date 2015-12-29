@@ -207,9 +207,13 @@ def atan_globe(lng, lat):
     return math.atan2(lng,lat)
 
 def FIRFilter (current, history, taps):
-    if len(history) == len(taps):
+    while len(history) >= len(taps):
         del history[-1]
     history.insert(0, current)
     mult = map(lambda h,a: h*a if h != None else 0.0, history, taps)
     ret = reduce(lambda x,y: x+y, mult)
     return ret
+
+LowPassFIR = [0.45, 0.2, 0.1, 0.05, 0.05, .05, .05, .05]
+def LowPassFilter (current, history):
+    return FIRFilter (current, history, LowPassFIR)

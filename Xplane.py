@@ -283,3 +283,6 @@ class XplaneSensors:
             rec = rec[5:]
             index,v1,v2,v3,v4,v5,v6,v7,v8 = self.data_struct_body.unpack(rec)
             print ("DATA[%d]: %g, %g, %g, %g,    %g, %g, %g, %g"%(index, v1, v2,v3,v4,v5,v6,v7))
+
+    def FlightMode(self, mode):
+        pass

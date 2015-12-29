@@ -15,8 +15,9 @@
 
 import time, logging
 
-import PID, FileConfig
+import PID, FileConfig, Globals
 
+import Arduino
 import Xplane, SurfaceControl, AttitudeControl, FlightControl, AttitudeControlVTOL
 import TakeoffControlVTOL, LandingControlVTOL, AttitudeVTOLEstimation
 import MiddleEngineTiltControl, VTOLYawControl, SolenoidControl
@@ -24,11 +25,6 @@ import Spatial
 import UnitTestFixture
 
 logger=logging.getLogger(__name__)
-
-FLIGHT_MODE_GROUND="ground"
-FLIGHT_MODE_AIRBORN="airborn"
-FLIGHT_MODE_TAKEOFF="takeoff"
-FLIGHT_MODE_LANDING="landing"
 
 class Airplane(FileConfig.FileConfig):
     def __init__(self):
@@ -49,7 +45,7 @@ class Airplane(FileConfig.FileConfig):
         self._next_waypoint = 0
 
         self._desired_heading = 0
-        self.CurrentFlightMode = FLIGHT_MODE_GROUND
+        self.CurrentFlightMode = Globals.FLIGHT_MODE_GROUND
         self._was_moving = False
 
         self._sensors = None
@@ -229,7 +225,7 @@ class Airplane(FileConfig.FileConfig):
     # Notifies that the take off roll has accompished enough speed that flight controls
     # have responsibility and authority. Activates PIDs.
     def Taxi(self, desired_location):
-        assert (self.CurrentFlightMode == FLIGHT_MODE_GROUND)
+        assert (self.CurrentFlightMode == Globals.FLIGHT_MODE_GROUND)
         if isinstance(desired_location,list):
             self.DesiredCourse = desired_location
         else:
@@ -238,13 +234,13 @@ class Airplane(FileConfig.FileConfig):
 
     # Inputs specify end of runway
     def Takeoff(self, runway_endpoints):
-        assert (self.CurrentFlightMode == FLIGHT_MODE_GROUND)
-        self.ChangeMode(FLIGHT_MODE_TAKEOFF)
+        assert (self.CurrentFlightMode == Globals.FLIGHT_MODE_GROUND)
+        self.ChangeMode(Globals.FLIGHT_MODE_TAKEOFF)
         self.DesiredCourse = runway_endpoints
         self._takeoff_control.Takeoff (runway_endpoints)
 
     def NextWayPoint(self, next_waypoint, desired_altitude):
-        assert (self.CurrentFlightMode == FLIGHT_MODE_AIRBORN)
+        assert (self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN)
         last_waypoint = self.DesiredCourse[1]
         self.DesiredCourse = [last_waypoint, next_waypoint]
         self.DesiredAltitude = desired_altitude
@@ -256,7 +252,7 @@ class Airplane(FileConfig.FileConfig):
         self._flight_control.Swoop(course, low_alt, high_alt)
 
     def FlyCourse(self, course, desired_altitude=0, desired_airspeed=0):
-        assert (self.CurrentFlightMode == FLIGHT_MODE_AIRBORN)
+        assert (self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN)
         self.DesiredCourse = course
         if desired_altitude:
             self.DesiredAltitude = desired_altitude
@@ -265,7 +261,7 @@ class Airplane(FileConfig.FileConfig):
         self._flight_control.FlyCourse (course, desired_altitude, desired_airspeed)
 
     def FlyTo(self, next_waypoint, desired_altitude=0, desired_airspeed=0):
-        assert (self.CurrentFlightMode == FLIGHT_MODE_AIRBORN)
+        assert (self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN)
         last_waypoint = self._sensors.Position()
         self.DesiredCourse = [last_waypoint, next_waypoint]
         if desired_altitude:
@@ -276,20 +272,20 @@ class Airplane(FileConfig.FileConfig):
 
     def TurnTo(self, degrees, roll, desired_altitude=0):
         logger.debug ("Turning to %g degrees with roll %g at altitude %d", degrees, roll, desired_altitude)
-        assert (self.CurrentFlightMode == FLIGHT_MODE_AIRBORN)
+        assert (self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN)
         if desired_altitude:
             self.DesiredAltitude = desired_altitude
         self._flight_control.TurnTo (degrees, roll, self.DesiredAltitude)
 
     def Turn(self, degrees, roll, desired_altitude=0):
         logger.debug ("Turning %g degrees with roll %g at altitude %d", degrees, roll, desired_altitude)
-        assert (self.CurrentFlightMode == FLIGHT_MODE_AIRBORN)
+        assert (self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN)
         if desired_altitude:
             self.DesiredAltitude = desired_altitude
         self._flight_control.Turn (degrees, roll, self.DesiredAltitude)
 
     def ChangeAltitude(self, desired_altitude):
-        assert (self.CurrentFlightMode == FLIGHT_MODE_AIRBORN)
+        assert (self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN)
         self.DesiredAltitude = desired_altitude
         self._flight_control.DesiredAltitude = desired_altitude
 
@@ -301,8 +297,8 @@ class Airplane(FileConfig.FileConfig):
 
     # Inputs specify touchdown point and (exact) heading and altitude of runway
     def Land(self):
-        assert (self.CurrentFlightMode == FLIGHT_MODE_AIRBORN)
-        self.ChangeMode (FLIGHT_MODE_LANDING)
+        assert (self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN)
+        self.ChangeMode (Globals.FLIGHT_MODE_LANDING)
         self.DesiredCourse = self.ApproachEndpoints
         self.RunwayAltitude = self.RunwayAltitude
         self._landing_control.Land(self.DesiredCourse, self.RunwayAltitude)
@@ -313,18 +309,18 @@ class Airplane(FileConfig.FileConfig):
             return -1
         if not self._was_moving and self._sensors.GroundSpeed() > 0:
             self._was_moving = True
-        if self.CurrentFlightMode == FLIGHT_MODE_AIRBORN:
+        if self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN:
             self._flight_control.Update()
             if self._current_directive_end_time != 0 and self._current_directive_end_time <= self._sensors.Time():
                 # The latest optimization step was running but has completed. Go to next directive
                 self._current_directive_end_time = 0
                 logger.debug("Completed last timed directive")
                 self.GetNextDirective()
-        elif self.CurrentFlightMode == FLIGHT_MODE_GROUND:
+        elif self.CurrentFlightMode == Globals.FLIGHT_MODE_GROUND:
             self._ground_control.Update()
-        elif self.CurrentFlightMode == FLIGHT_MODE_LANDING:
+        elif self.CurrentFlightMode == Globals.FLIGHT_MODE_LANDING:
             self._landing_control.Update()
-        elif self.CurrentFlightMode == FLIGHT_MODE_TAKEOFF:
+        elif self.CurrentFlightMode == Globals.FLIGHT_MODE_TAKEOFF:
             self._takeoff_control.Update()
         return self._return_state
 
@@ -334,28 +330,29 @@ class Airplane(FileConfig.FileConfig):
             return
 
         last_desired_pitch = 0
-        if self.CurrentFlightMode == FLIGHT_MODE_AIRBORN:
+        if self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN:
             last_desired_pitch = self._flight_control.Stop()
-        elif self.CurrentFlightMode == FLIGHT_MODE_GROUND:
+        elif self.CurrentFlightMode == Globals.FLIGHT_MODE_GROUND:
             if self._ground_control:
                 self._ground_control.Stop()
-        elif self.CurrentFlightMode == FLIGHT_MODE_LANDING:
+        elif self.CurrentFlightMode == Globals.FLIGHT_MODE_LANDING:
             self._landing_control.Stop()
-        elif self.CurrentFlightMode == FLIGHT_MODE_TAKEOFF:
+        elif self.CurrentFlightMode == Globals.FLIGHT_MODE_TAKEOFF:
             last_desired_pitch = self._takeoff_control.Stop()
 
         self.CurrentFlightMode = newmode
 
         logger.debug ("Starting mode %s", newmode)
-        if self.CurrentFlightMode == FLIGHT_MODE_AIRBORN:
+        if self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN:
             self._flight_control.Start(last_desired_pitch)
-        elif self.CurrentFlightMode == FLIGHT_MODE_GROUND:
+        elif self.CurrentFlightMode == Globals.FLIGHT_MODE_GROUND:
             self._ground_control.Start()
-        elif self.CurrentFlightMode == FLIGHT_MODE_LANDING:
+        elif self.CurrentFlightMode == Globals.FLIGHT_MODE_LANDING:
             self._landing_control.Start()
-        elif self.CurrentFlightMode == FLIGHT_MODE_TAKEOFF:
+        elif self.CurrentFlightMode == Globals.FLIGHT_MODE_TAKEOFF:
             self._takeoff_control.Start()
 
+        self._sensors.FlightMode(self.CurrentFlightMode)
         self._return_state = 1
 
     def SetPIDScoring(self, scoring_object):
@@ -405,8 +402,8 @@ class Airplane(FileConfig.FileConfig):
     def GetNextDirective(self):
         if self._sensors.Battery() < self.BatteryMinReserve - self.RTBBatteryNeeded():
             self.Land()
-        elif (self.CurrentFlightMode == FLIGHT_MODE_AIRBORN or
-              self.CurrentFlightMode == FLIGHT_MODE_GROUND):
+        elif (self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN or
+              self.CurrentFlightMode == Globals.FLIGHT_MODE_GROUND):
             ccdir = None
             if self._command_control:
                 ccdir = self._command_control.GetNextDirective()
@@ -414,10 +411,10 @@ class Airplane(FileConfig.FileConfig):
                 self.SendNextCommand()
             else:
                 self.DispatchCommand(ccdir)
-        elif self.CurrentFlightMode == FLIGHT_MODE_LANDING:
-            self.ChangeMode (FLIGHT_MODE_GROUND)
-        elif self.CurrentFlightMode == FLIGHT_MODE_TAKEOFF:
-            self.ChangeMode (FLIGHT_MODE_AIRBORN)
+        elif self.CurrentFlightMode == Globals.FLIGHT_MODE_LANDING:
+            self.ChangeMode (Globals.FLIGHT_MODE_GROUND)
+        elif self.CurrentFlightMode == Globals.FLIGHT_MODE_TAKEOFF:
+            self.ChangeMode (Globals.FLIGHT_MODE_AIRBORN)
             self.SendNextCommand()
 
     def RTBBatteryNeeded(self):

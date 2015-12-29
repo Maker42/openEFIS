@@ -28,3 +28,8 @@ def datestamp():
     dt = datetime.datetime.now()
     return '%d-%02d-%02d_%02d-%02d-%02d'%(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second)
 
+FLIGHT_MODE_GROUND="ground"
+FLIGHT_MODE_AIRBORN="airborn"
+FLIGHT_MODE_TAKEOFF="takeoff"
+FLIGHT_MODE_LANDING="landing"
+
