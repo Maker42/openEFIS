@@ -1,3 +1,4 @@
+#!/usr/bin/python
 # Copyright (C) 2015  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
@@ -41,6 +42,8 @@ if '__main__' == __name__:
     opt.add_argument('-c', '--record', action='store_true', help = 'Create a recording in simulation')
     opt.add_argument('-p', '--pid', help = 'PID optimizer config file')
     opt.add_argument('--log-level', type=int, default=logging.WARNING, help = '1 = Maximum Logging. 100 = Absolute Silence. 40 = Errors only. 10 = Basic Debug')
+    opt.add_argument('-v', '--magnetic-variation', default=None, help='The magnetic variation(declination) of the current position')
+    opt.add_argument('-a', '--altitude', default=None, help='The currently known altitude')
     args = opt.parse_args()
 
     if args.home:
@@ -105,6 +108,10 @@ if '__main__' == __name__:
 
     craft = Airplane.Airplane()
     craft.initialize(rlines)
+    if args.magnetic_variation != None:
+        craft.KnownMagneticVariation(args.magnetic_variation)
+    if args.altitude != None:
+        craft.KnownAltitude(args.altitude)
 
     ffp = open(args.flight_plan, 'r')
     craft.FlightPlan = ffp.readlines()
@@ -133,8 +140,9 @@ if '__main__' == __name__:
         UnitTestFixture.ReadResponses(args.unit_test)
         UnitTestFixture.Update()
 
-    #craft.ChangeMode (Airplane.FLIGHT_MODE_AIRBORN)
-    #craft._flight_control._throttle_control.Set(.5)
+    # Uncomment the following two lines for simulations that start airborn
+    craft.ChangeMode (Globals.FLIGHT_MODE_AIRBORN)
+    craft._flight_control._throttle_control.Set(.5)
     craft.DispatchCommand (craft.FlightPlan[0])
     while True:
         craft.Update()

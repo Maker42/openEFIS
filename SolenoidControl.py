@@ -14,19 +14,19 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
 class SolenoidControl:
-    def __init__(self, pin):
-        self.pin = pin
+    def __init__(self, channel):
+        self._channel = channel
         self._current_val = 0
         self._controller = None
 
     def Set(self, val):
         self._current_val = val
-        self._controller.SetPin(self.pin, val)
+        self._controller.SetDigitalChannel(self._channel, val)
         # TODO: connect interface to control a pin output
 
     def SetServoController(self, sc):
         self._controller = sc
-        self._controller.SetPin(self.pin, self._current_val)
+        #self._controller.SetDigitalChannel(self.pin, self._current_val)
 
     def GetCurrent(self):
         return self._current_val

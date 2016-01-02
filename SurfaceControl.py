@@ -14,18 +14,20 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
 class SurfaceControl:
-    def __init__(self, channel):
+    def __init__(self, channel, lookup_table):
         self.Channel = channel
         self._controller = None
         self._current_val = 0
+        self._lookup_table = lookup_table
 
     def SetServoController(self, sc):
         self._controller = sc
+        self._controller.SetLookupTable (self.Channel, self._lookup_table)
         self._limits = self._controller.GetLimits(self.Channel)
 
     def Set(self, val):
         self._current_val = val
-        self._controller.SetChannel (self.Channel, val)
+        self._controller.SetAnalogChannel (self.Channel, val)
 
     def GetCurrent(self):
         return self._current_val

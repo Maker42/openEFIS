@@ -16,12 +16,11 @@
 import time, logging, math, copy
 
 import PID
-import FileConfig
+import FileConfig, Globals
 import util
 
 logger=logging.getLogger(__name__)
 
-SUBMODE_STATIONARY="stationary"
 SUBMODE_ASCEND="ascend"
 SUBMODE_ROTATE="rotate"
 SUBMODE_TRANSITION_PRIME="transition_prime"
@@ -60,7 +59,7 @@ class TakeoffControlVTOL(FileConfig.FileConfig):
         self._last_side_speed = 0.0
         self._last_forward_speed = 0.0
 
-        self._flight_mode = SUBMODE_STATIONARY
+        self._flight_mode = SUBMODE_ASCEND
         self._callback = callback
 
         # Configuration properties
@@ -122,17 +121,16 @@ class TakeoffControlVTOL(FileConfig.FileConfig):
         self.CurrentAltitude = self._sensors.Altitude()
         self._desired_climb_rate = self.get_climb_rate()
         self.CurrentHeading = self._sensors.Heading()
-        middle_engine_roll_contribution = 1.0
-        outer_engine_movement = 0
-        if (self._flight_mode == SUBMODE_ASCEND or
-                (self._flight_mode == SUBMODE_STATIONARY and
-                    self._sensors.Altitude() > self.RunwayAltitude + self.callback.GroundEffectHeight)):
-            # If not following a course, keep the starting GPS position
-            self._desired_pitch, self._desired_roll = (
-                    self._attitude_vtol_estimation.EstimateNextAttitude(self.DesiredPosition,
-                        self.CorrectionCurve, self._sensors)
-                    )
+        throttle_overrides = None
+        self._desired_heading_rate_change = 0.0
+        use_control_surfaces = False
+        # If not following a course, keep the starting GPS position
+        self._desired_pitch, self._desired_roll = (
+                self._attitude_vtol_estimation.EstimateNextAttitude(self.DesiredPosition,
+                    self.CorrectionCurve, self._sensors)
+                )
 
+        if self._flight_mode == SUBMODE_ASCEND:
             if self.CurrentAltitude >= self.DesiredAltitude:
                 if False:   # TODO: Re-enable this code after testing
                     self._desired_roll = 0.0
@@ -156,14 +154,20 @@ class TakeoffControlVTOL(FileConfig.FileConfig):
                 self._desired_heading_rate_change = 0.0
                 self._flight_mode = SUBMODE_TRANSITION_PRIME
         elif self._flight_mode == SUBMODE_TRANSITION_PRIME:
-            # TODO: slowly move the middle engines into forward thrust, following self.TransitionSteps
-            middle_engine_roll_contribution = math.sin(self.TransitionSteps[self._transition_step][0] * util.RAD_DEG)
+            self._desired_pitch = -5.0      # Pitch forward to achieve forward movement
+            self._desired_roll = 0.0
+            if self.TransitionSteps[self._transition_step][0] > 10:
+                # Engines are now facing foward enough that a differential would cause unwanted yaw.
+                # Just thrust forward
+                throttle_overrides = [None, None, 0.7, 0.7, None, None]
+                use_control_surfaces = True
+                self._sensors.FlightMode(Globals.FLIGHT_MODE_AIRBORN, True)
             if self._sensors.AirSpeed() >= self.TransitionSteps[self._transition_step][1]:
                 self._transition_step += 1
                 if self._transition_step >= len(self.TransitionSteps):
                     self._flight_mode = SUBMODE_TRANSITION_SECONDARY
                     self._vtol_engine_release.Set(1)
-                    outer_engine_movement = 1
+                    throttle_overrides = [.1, .1, 1.0, 1.0, .3, .3]
                 else:
                     self._engine_tilt.Set(self.TransitionSteps[self._transition_step][0])
         elif self._flight_mode == SUBMODE_TRANSITION_SECONDARY:
@@ -172,7 +176,10 @@ class TakeoffControlVTOL(FileConfig.FileConfig):
             # Adding power to the rear engines will cause the front and back engines to tilt
             # into forward flight mode. The movement brakes will force the transition to be
             # gradual enough for a smooth transition.
-            outer_engine_movement = 1
+            use_control_surfaces = True
+            throttle_overrides = [.1, .1, 1.0, 1.0, .3, .3]
+            self._desired_pitch = 0.0
+            self._desired_roll = 0.0
             if self._sensors.OuterEnginePosition() == "forward":
                 self._vtol_engine_release.Set(0)
                 self.get_next_directive()
@@ -189,8 +196,8 @@ class TakeoffControlVTOL(FileConfig.FileConfig):
 
         logger.log (3, "Ascend desired pitch = %g, roll=%g"%(self._desired_pitch, self._desired_roll))
         self._attitude_control.UpdateControls (self._desired_pitch, self._desired_roll,
-                self._desired_heading_rate_change, self._desired_climb_rate, middle_engine_roll_contribution,
-                outer_engine_movement, True)
+                self._desired_heading_rate_change, self._desired_climb_rate, 
+                use_control_surfaces, throttle_overrides)
 
     def get_climb_rate(self):
         return util.get_rate (self.CurrentAltitude, self.DesiredAltitude, self.AltitudeAchievementMinutes, self.ClimbRateLimits)

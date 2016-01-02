@@ -140,7 +140,6 @@ class FlightControl(FileConfig.FileConfig):
         self.CurrentAirSpeed = self._sensors.AirSpeed()
         self._throttlePID.SetSetPoint (self.DesiredAirSpeed)
         self._throttlePID.SetMode (PID.AUTOMATIC, self.CurrentAirSpeed, self._throttle_control.GetCurrent())
-
         self.CurrentAltitude = self._sensors.Altitude()
         self._desired_climb_rate = self.get_climb_rate()
         self.CurrentClimbRate = self._sensors.ClimbRate()
@@ -150,6 +149,7 @@ class FlightControl(FileConfig.FileConfig):
             self.SelectAirspeedPitch()
         else:
             self.SelectClimbratePitch()
+
         self._attitude_control.StartFlight()
         if self.JournalFileName and (not self._journal_file):
             self._journal_file = open(self.JournalFileName, 'w+')
@@ -423,7 +423,7 @@ class FlightControl(FileConfig.FileConfig):
             self.DesiredAirSpeed = self._callback.MaxAirSpeed
             # use a constant throttle setting to start
             self._throttlePID.SetMode (PID.MANUAL, self.CurrentAirSpeed, self._throttle_control.GetCurrent())
-            self._throttle_control.Set (75)
+            self._throttle_control.Set (.75)
 
             self.DesiredCourse = course
             self.DesiredCourse, self._swoop_up_course = self.divide_swoop(course, low_alt,

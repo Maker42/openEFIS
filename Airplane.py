@@ -20,7 +20,7 @@ import PID, FileConfig, Globals
 import Arduino
 import Xplane, SurfaceControl, AttitudeControl, FlightControl, AttitudeControlVTOL
 import TakeoffControlVTOL, LandingControlVTOL, AttitudeVTOLEstimation
-import MiddleEngineTiltControl, VTOLYawControl, SolenoidControl
+import MiddleEngineTiltControl, VTOLYawControl, SolenoidControl, ThrottleControl
 import Spatial
 import UnitTestFixture
 
@@ -222,6 +222,12 @@ class Airplane(FileConfig.FileConfig):
     def init_elevator_control(self, args, filelines):
         self._elevator_control = eval(' '.join(args[1:]))
 
+    def KnownAltitude(self, alt):
+        self._sensors.KnownAltitude(alt)
+
+    def KnownMagneticVariation(self, mv):
+        self._sensors.KnownMagneticVariation(mv)
+
     # Notifies that the take off roll has accompished enough speed that flight controls
     # have responsibility and authority. Activates PIDs.
     def Taxi(self, desired_location):
@@ -326,6 +332,9 @@ class Airplane(FileConfig.FileConfig):
 
     def ChangeMode(self, newmode):
         logger.debug ("Change mode from %s to %s", self.CurrentFlightMode, newmode)
+        self._sensors.FlightMode(self.CurrentFlightMode,
+                True if isinstance(self._takeoff_control,TakeoffControlVTOL.TakeoffControlVTOL)
+                     else False)
         if self.CurrentFlightMode == newmode:
             return
 
@@ -352,7 +361,6 @@ class Airplane(FileConfig.FileConfig):
         elif self.CurrentFlightMode == Globals.FLIGHT_MODE_TAKEOFF:
             self._takeoff_control.Start()
 
-        self._sensors.FlightMode(self.CurrentFlightMode)
         self._return_state = 1
 
     def SetPIDScoring(self, scoring_object):

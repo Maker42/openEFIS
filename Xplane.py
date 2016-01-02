@@ -30,6 +30,8 @@ class XplaneControl:
         self.sock.setblocking (0)
         control = self
         self.ServoRange = (-1.0, 1.0)
+        self._lookup_tables = list()
+        self._throttle_table = None
         self.controls = [
                 ("sim/joystick/yoke_pitch_ratio", "YokePitch", (-1.0, 1.0)), #	The deflection of the joystick axis controlling pitch. Use override_joystick or override_joystick_pitch
                 ("sim/joystick/yoke_roll_ratio", "YokeRoll", (-1.0, 1.0)),  #	The deflection of the joystick axis controlling roll. Use override_joystick or override_joystick_roll
@@ -58,19 +60,28 @@ class XplaneControl:
             szc = self.dref_struct_preamble + self.dref_struct_body.pack(0.0, sz)
             self.sock.sendto (szc, (self.xplane_host, self.xplane_port))
 
-                # Other controls that may be of interest:
-#sim/joystick/servo_pitch_ratio	float	n	[-1..1]	Servo input for pitch
-#sim/joystick/servo_roll_ratio	float	n	[-1..1]	Servo input for roll
-#sim/joystick/servo_heading_ratio	float	n	[-1..1]	Servo input for yaw
-#sim/joystick/joystick_pitch_nullzone	float	y	ratio	The nullzone size for the pitch axis (as of 940, one null zone serves all 3 axes)
-#sim/joystick/joystick_roll_nullzone	float	y	ratio	The nullzone size for the roll axis
-#sim/joystick/joystick_heading_nullzone	float	y	ratio	The nullzone size for the heading axis
-#sim/joystick/joystick_pitch_center	float	y	ratio	Joystick center for pitch axis
-#sim/joystick/joystick_roll_center	float	y	ratio	Joystick center for roll axis
-#sim/joystick/joystick_heading_center	float	y	ratio	Joystick center for heading axis
-#sim/operation/override/override_joystick	int	y	boolean	Override control of the joystick deflections (overrides stick, yoke, pedals, keys, mouse, and auto-coordination)
+    def initialize(self, filelines):
+        pass
 
-    def SetChannel(self, channel, val):
+    def SetThrottleTable(self, table):
+        self._throttle_table = table
+
+    def SetLookupTable(self, channel, table):
+        while len(self._lookup_tables) <= channel:
+            self._lookup_tables.append(None)
+        self._lookup_tables[channel] = table
+
+    def GetLimits(self, channel):
+        if channel < 0 or channel >= len(self._lookup_tables) or self._lookup_tables[channel] == None:
+            raise RuntimeError ("Invalid channel set (%d)"%channel)
+        mn = 9999999
+        mx = -9999999
+        for k,v in self._lookup_tables[channel]:
+            mn = mn if mn < k else k
+            mx = mx if mx > k else k
+        return (mn,mx)
+
+    def SetAnalogChannel(self, channel, val):
         for retry in range(5):
             if channel < 0 or channel >= len(self.controls):
                 raise RuntimeError ("Invalid channel set (%d)"%channel)
@@ -284,5 +295,11 @@ class XplaneSensors:
             index,v1,v2,v3,v4,v5,v6,v7,v8 = self.data_struct_body.unpack(rec)
             print ("DATA[%d]: %g, %g, %g, %g,    %g, %g, %g, %g"%(index, v1, v2,v3,v4,v5,v6,v7))
 
-    def FlightMode(self, mode):
+    def KnownAltitude(self, alt):
+        pass
+
+    def KnownMagneticVariation(self, v):
+        pass
+
+    def FlightMode (self, mode, vertical=True):
         pass
