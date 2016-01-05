@@ -3,31 +3,6 @@ import re, logging
 
 logger=logging.getLogger(__name__)
 
-re_uint = r"(\d+)"
-re_float = r"([\-]?\d+\.?\d*)"
-re_hex = r"([\da-fA-F]+)"
-
-re_gga = re.compile(r"\$GPGGA," +
-        re_float + "," +                # Group 1:      UTC time
-        re_float + ",(N|S)," +          # Group 2,3:    Latitude
-        re_float + ",(E|W)," +          # Group 4,5:    Longitude
-        re_uint + "," +                 # Group 6:      Fix quality
-        re_uint + "," +                 # Group 7:      Number of SVs
-        re_uint + "," +                 # Group 8:      HDOP
-        re_float + ",(M|F)," +          # Group 9,10:   MSL height (meters or feet)
-        r".*\*" + re_hex)               # Group 11:     Checksum
-
-re_rmc = re.compile(r"\$GPRMC," +
-        re_float + "," +                # Group 1:      UTC time
-        r"(A|V)," +                     # Group 2:      Active or Void
-        re_float + ",(N|S)," +          # Group 3,4:    Latitude
-        re_float + ",(E|W)," +          # Group 5,6:    Longitude
-        re_float + "," +                # Group 7:      Speed in Knots
-        re_float + "," +                # Group 8:      Track Angle in degrees (true)
-        re_uint + "," +                 # Group 9:      Date
-        re_float + "," +                # Group 10:     Magnetic Variation in degrees
-        r"\*" + re_hex)                 # Group 11:     Checksum
-
 def CheckNMEAChecksum(checksum, s):
     for i in range(2,len(s)):
         checksum ^= ord(s[i])
@@ -62,55 +37,61 @@ def ParseNMEAStrings(nmea, data_container):
         if sentence.startswith("GPGGA"):
             fields = sentence.split(',')
             try:
-                data_container.signal_quality = int(fields[6])
-                if data_container.signal_quality > 0:
-                    data_container.utc = float(fields[1])
+                data_container.SignalQuality = int(fields[6])
+                if data_container.SignalQuality > 0:
+                    data_container.Utc = float(fields[1])
                     lat = float(fields[2]) / 100.0
                     if fields[3] == 'S':
                         lat *= -1.0
-                    data_container.latitude = lat
+                    data_container.Latitude = lat
                     lng = float(fields[4]) / 100.0
                     if fields[5] == 'W':
                         lng *= -1.0
-                    data_container.longitude = lng
+                    data_container.Longitude = lng
                     alt = float(fields[9])
                     if fields[10] == 'M':
                         alt *= FEET_METER
-                    data_container.gps_altitude = alt
+                    data_container.GpsAltitude = alt
                     logger.log(2, "NMEA got GGA: time = %g, pos=%g,%g, alt=%g",
-                            data_container.utc,
-                            data_container.latitude,
-                            data_container.longitude,
-                            data_container.gps_altitude)
+                            data_container.Utc,
+                            data_container.Latitude,
+                            data_container.Longitude,
+                            data_container.GpsAltitude)
                     ret = True
+                    data_container.HaveNewPosition = True
                 else:
-                    data_container.utc = None
-                    data_container.latitude = None
-                    data_container.longitude = None
-                    data_container.gps_altitude = None
+                    data_container.Utc = None
+                    data_container.Latitude = None
+                    data_container.Longitude = None
+                    data_container.GpsAltitude = None
+                    data_container.SignalQuality = 0
                     logger.debug("NMEA got GGA with no signal quality")
             except:
                 logger.debug("Unexpected GGA from GPS: %s", str(fields))
+            data_container.GGAUpdate = True
         elif sentence.startswith("GPRMC"):
             fields = sentence.split(',')
             try:
                 if fields[2] == "A":
-                    data_container.ground_speed = float(fields[7])
-                    data_container.ground_track = float(fields[8])
+                    data_container.GroundSpeed = float(fields[7])
+                    data_container.GroundTrack = float(fields[8])
                     if len(fields) > 10 and len(fields[10]) > 0:
-                        data_container.magnetic_variation = float(fields[10])
+                        data_container.MagneticVariation = float(fields[10])
                     else:
                         # TODO: Fill in magnetic variation with user input or big lookup table
-                        data_container.magnetic_variation = 0.0
+                        data_container.MagneticVariation = 0.0
                     logger.log(2, "NMEA got RMC: speed=%g, track=%g, var=%g",
-                        data_container.ground_speed,
-                        data_container.ground_track,
-                        data_container.magnetic_variation)
+                        data_container.GroundSpeed,
+                        data_container.GroundTrack,
+                        data_container.MagneticVariation)
+                    data_container.HaveNewGroundTrack = True
                     ret = True
                 else:
-                    data_container.ground_speed = None
-                    data_container.ground_track = None
+                    data_container.GroundSpeed = None
+                    data_container.GroundTrack = None
+                    data_container.MagneticVariation = None
                     logger.debug("NMEA got void RMC")
             except:
                 logger.debug("Unexpected RMC from GPS: %s", str(fields))
+            data_container.RMCUpdate = True
     return ret

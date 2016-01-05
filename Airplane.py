@@ -17,7 +17,7 @@ import time, logging
 
 import PID, FileConfig, Globals
 
-import Arduino
+import SenseControl
 import Xplane, SurfaceControl, AttitudeControl, FlightControl, AttitudeControlVTOL
 import TakeoffControlVTOL, LandingControlVTOL, AttitudeVTOLEstimation
 import MiddleEngineTiltControl, VTOLYawControl, SolenoidControl, ThrottleControl
@@ -311,6 +311,7 @@ class Airplane(FileConfig.FileConfig):
 
     def Update(self):
         if self.has_crashed():
+            logger.error("Airplane crashed")
             self._throttle_control.Set(0)
             return -1
         if not self._was_moving and self._sensors.GroundSpeed() > 0:

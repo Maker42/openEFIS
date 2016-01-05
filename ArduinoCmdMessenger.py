@@ -1,4 +1,5 @@
-import logging
+import logging, time
+import util
 
 logger=logging.getLogger(__name__)
 
@@ -42,7 +43,10 @@ class CmdMessenger:
 
     def sendCmdEnd(self):
         logger.log(1, "Cmd Sending %s%s", self._sendcmd, self._cmd_delimiter)
-        self._port.write (self._sendcmd + self._cmd_delimiter + '\r\n')
+        if self._port:
+            self._port.write (self._sendcmd + self._cmd_delimiter + '\r\n')
+        else:
+            logger.warning("No port for command: %s"%self._sendcmd)
 
     def sendCmd(self, cmdId, *args):
         self.sendCmdStart(cmdId)
@@ -51,8 +55,8 @@ class CmdMessenger:
         self.sendCmdEnd()
 
     def sendValidatedCmd(self, cmdId, *args):
-        chksum = ComputeChecksum (*args)
-        allargs = tuple(*args) + tuple(chksum)
+        chksum = ComputeCheckSum (*args)
+        allargs = tuple(args) + (chksum, )
         self.sendCmd (cmdId, *allargs)
 
     def attach(self, cmdId, fn):
@@ -103,28 +107,40 @@ class CmdMessenger:
         return ret
 
     def feedinSerialData (self):
-        rcv = self._port.read(1024)
-        recv = self._residual_recv + rcv
-        eoc = self._find_command_end (recv)
-        while eoc != None:
-            cmd = recv[:eoc]
-            recv = recv[eoc+1:]
-            if len(cmd) > 0:
-                logger.log(1, "Cmd Received %s", cmd)
-                args = cmd.split(self._arg_delimiter)
-                self._rejoin_args (args)
-                args = self._remove_escapes (args)
-                try:
-                    cmdId = int(args[0])
-                    if self._command_handlers.has_key(cmdId):
-                        self._command_handlers[cmdId] (args[1:])
-                    else:
-                        print ("Invalid command %d received"%cmdId)
-                except Exception,e:
-                    logger.warning("Error handling command %s: %s", str(args), str(e))
+        if self._port == None:
+            # For testing
+            # Sample 10DOF data
+            line = '93.2,20.1,0,0,0,0.05,0.05,0.9,-0.8,-0.6,0.05,%d'%util.millis(time.time())
+            chksum = ComputeCheckSum (line)
+            self._command_handlers[3] ([line, chksum])
+            # Sample GGA data
+            line = '$GPGGA,172814.0,3723.46587704,N,12202.26957864,W,2,6,1.2,18.893,M,-25.669,M,2.0,0031*4F'
+            self._command_handlers[4] ([line])
+            # Sample RMC data
+            line = '$GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W*6A'
+            self._command_handlers[4] ([line])
+        else:
+            rcv = self._port.read(1024)
+            recv = self._residual_recv + rcv
             eoc = self._find_command_end (recv)
-
-        self._residual_recv = recv
+            while eoc != None:
+                cmd = recv[:eoc]
+                recv = recv[eoc+1:]
+                if len(cmd) > 0:
+                    logger.log(1, "Cmd Received %s", cmd)
+                    args = cmd.split(self._arg_delimiter)
+                    self._rejoin_args (args)
+                    args = self._remove_escapes (args)
+                    try:
+                        cmdId = int(args[0])
+                        if self._command_handlers.has_key(cmdId):
+                            self._command_handlers[cmdId] (args[1:])
+                        else:
+                            print ("Invalid command %d received"%cmdId)
+                    except Exception,e:
+                        logger.warning("Error handling command %s: %s", str(args), str(e))
+                eoc = self._find_command_end (recv)
+            self._residual_recv = recv
 
 def _checksum(chk, arg):
     if isinstance(arg,int):

@@ -141,8 +141,8 @@ if '__main__' == __name__:
         UnitTestFixture.Update()
 
     # Uncomment the following two lines for simulations that start airborn
-    craft.ChangeMode (Globals.FLIGHT_MODE_AIRBORN)
     craft._flight_control._throttle_control.Set(.5)
+    craft.ChangeMode (Globals.FLIGHT_MODE_AIRBORN)
     craft.DispatchCommand (craft.FlightPlan[0])
     while True:
         craft.Update()

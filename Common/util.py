@@ -217,3 +217,15 @@ def FIRFilter (current, history, taps):
 LowPassFIR = [0.45, 0.2, 0.1, 0.05, 0.05, .05, .05, .05]
 def LowPassFilter (current, history):
     return FIRFilter (current, history, LowPassFIR)
+
+def RMSDiff (l1, l2):
+    length1 = len(l1)
+    length2 = len(l2)
+    length = length1 if length1 > length2 else length2
+    sum = 0
+    for i in range(length):
+        diff = l1[i] - l2[i]
+        sum += (diff * diff)
+    ret = math.sqrt(sum) / length
+    return ret
+
