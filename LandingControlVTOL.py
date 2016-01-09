@@ -24,7 +24,7 @@ logger=logging.getLogger(__name__)
 SUBMODE_TRANSITION_PRIME="transition_prime"
 SUBMODE_TRANSITION_SECONDARY="transition_secondary"
 SUBMODE_POSITION="position"
-SUBMODE_ROTATE="rotate"
+# No need to separate rotation, since that can be done in parallel with other modes: SUBMODE_ROTATE="rotate"
 SUBMODE_DESCEND="descend"
 SUBMODE_TOUCHDOWN="touchdown"
 
@@ -98,10 +98,11 @@ class LandingControlVTOL(FileConfig.FileConfig):
         self.DesiredPosition = desired_course[0]
         self.RunwayAltitude = runway_altitude
 
-        #Commented out for xplane simulation: self._flight_mode = SUBMODE_TRANSITION_PRIME
-        self._flight_mode = SUBMODE_DESCEND  # Jump past the transition steps for xplane simulation. Delete me!
-        self.DesiredAltitude = self.RunwayAltitude - 20.0
-        #Commented out for xplane simulation:self._forward_engine_release.Set(1)
+        self._flight_mode = SUBMODE_TRANSITION_PRIME
+        self._transition_step = 0               # Current transition step number
+        self.DesiredAltitude = self.RunwayAltitude + self.PositioningAGL
+        if self._forward_engine_release:
+            self._forward_engine_release.Set(1)
         self._attitude_control.StartFlight(0.64)
 
     def Stop(self):
@@ -137,52 +138,49 @@ class LandingControlVTOL(FileConfig.FileConfig):
             self._desired_climb_rate = -20.0
             if self._attitude_control.ForceThrottleDown():
                 self.get_next_directive()
-        elif self._flight_mode == SUBMODE_ROTATE:
-            self._sensors.FlightMode(Globals.FLIGHT_MODE_LANDING, True)
-            self.compute_heading_rate()
-            if self._desired_heading_rate_change * self._rotate_direction <= 0:
-                self._desired_heading_rate_change = 0.0
-                self._flight_mode = SUBMODE_POSITION
-                self.DesiredAltitude = self.RunwayAltitude + self.PositioningAGL
         elif self._flight_mode == SUBMODE_TRANSITION_PRIME:
             # Release tilt locks, apply movement slowing brakes, add power to rear engine, and
             # apply downward elevator to compensate for rear engine upward thrust.
             # Adding power to the rear engines will cause the front and back engines to tilt
             # into forward flight mode. The movement brakes will force the transition to be
             # gradual enough for a smooth transition.
-            use_control_surfaces = True
-            throttle_overrides = [.1, .1, 1.0, 1.0, .3, .3]
-            self._desired_pitch = 0.0
-            self._desired_roll = 0.0
-            self._sensors.FlightMode(Globals.FLIGHT_MODE_AIRBORN, True)
-            if self._sensors.OuterEnginePosition() == "vertical":
-                self._forward_engine_release.Set(0)
+            if self._sensors.OuterEnginePosition() != "vertical":
+                use_control_surfaces = True
+                throttle_overrides = [.1, .1, 1.0, 1.0, .3, .3]
+                self._desired_pitch = 0.0
+                self._desired_roll = 0.0
+            else:
+                if self._forward_engine_release != None:
+                    self._forward_engine_release.Set(0)
                 self._flight_mode = SUBMODE_TRANSITION_SECONDARY
         elif self._flight_mode == SUBMODE_TRANSITION_SECONDARY:
             # move the middle engines into vertical thrust, following self.TransitionSteps
             self._desired_pitch = 0.0
             self._desired_roll = 0.0
-            if self._sensors.AirSpeed() <= self.TransitionSteps[self._transition_step][1]:
+            if (self._engine_tilt == None) or (self._engine_tilt.GetCurrent() == 0):
+                self._sensors.FlightMode(Globals.FLIGHT_MODE_LANDING, True)
+                self._flight_mode = SUBMODE_POSITION
+            elif self._sensors.AirSpeed() <= self.TransitionSteps[self._transition_step][1]:
                 self._transition_step += 1
                 if self._transition_step >= len(self.TransitionSteps):
-                    self._flight_mode = SUBMODE_ROTATE
-                    self.CurrentPosition = self._sensors.Position()
-                    heading,distance,rel_lng = util.TrueHeadingAndDistance ([self.CurrentPosition, self.DesiredPosition])
-                    hours_to_position = distance / self.MaxGroundSpeed
-                    desired_position = util.AddPosition(self.DesiredPosition, self._sensors.WindSpeed() * hours_to_position, self._sensors.WindDirection(), rel_lng)
-                    self.DesiredHeading = util.TrueHeading([self.CurrentPosition, desired_position])
-                    hd = self.compute_heading_difference()
-                    if abs(hd) > 2.0:
-                        self._flight_mode = SUBMODE_ROTATE
-                        self._rotate_direction = 1 if hd > 0 else -1
-                    self.compute_heading_rate(hd)
                     self._engine_tilt.Set(0.0)
+                    self._flight_mode = SUBMODE_POSITION
+                    self._sensors.FlightMode(Globals.FLIGHT_MODE_LANDING, True)
                 else:
                     self._engine_tilt.Set(self.TransitionSteps[self._transition_step][0])
             if self.TransitionSteps[self._transition_step][0] < 10:
                 self._sensors.FlightMode(Globals.FLIGHT_MODE_LANDING, True)
             else:
                 use_control_surfaces = True
+        if self._flight_mode == SUBMODE_POSITION:
+            self.CurrentPosition = self._sensors.Position()
+            heading,distance,_ = util.TrueHeadingAndDistance (
+                    [self.CurrentPosition, self.DesiredPosition])
+            self.DesiredTrueHeading = heading
+            if  distance < .1:
+                self.DesiredTrueHeading,_,_ = util.TrueHeadingAndDistance (self.DesiredCourse)
+                self.DesiredAltitude = self.RunwayAltitude - 20
+                self._flight_mode = SUBMODE_DESCEND
         if self._journal_file:
             self._journal_file.write(str(ms))
 
@@ -193,6 +191,7 @@ class LandingControlVTOL(FileConfig.FileConfig):
                 self._journal_file.flush()
                 self._journal_flush_count = 0
 
+        self.compute_heading_rate()
         logger.log (5, "Descend desired pitch = %g, roll=%g, climb = %g"%(self._desired_pitch, self._desired_roll, self._desired_climb_rate))
         self._attitude_control.UpdateControls (self._desired_pitch, self._desired_roll,
                 self._desired_heading_rate_change, self._desired_climb_rate, 
@@ -209,7 +208,7 @@ class LandingControlVTOL(FileConfig.FileConfig):
                 self.HeadingAchievementSeconds, self.MaxHeadingRate)
 
     def compute_heading_difference(self):
-        heading_difference = self.DesiredTrueHeading - (self.CurrentHeading + self.MagneticDeclination)
+        heading_difference = self.DesiredTrueHeading - (self.CurrentHeading - self.MagneticDeclination)
         if heading_difference > 180.0:
             heading_difference -= 360.0
         elif heading_difference < -180.0:

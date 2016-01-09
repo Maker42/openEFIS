@@ -22,7 +22,6 @@ import util
 logger=logging.getLogger(__name__)
 
 SUBMODE_ASCEND="ascend"
-SUBMODE_ROTATE="rotate"
 SUBMODE_TRANSITION_PRIME="transition_prime"
 SUBMODE_TRANSITION_SECONDARY="transition_secondary"
 
@@ -80,6 +79,9 @@ class TakeoffControlVTOL(FileConfig.FileConfig):
         self.PitchPIDSamplePeriod = 1000
         self.PitchPIDLimits = (-0.2, 0.2)
 
+        self.LandAfterReachingState = None      # Name a substate which, after achievement,
+                                                # trigger a command to reverse and land.
+
         self._attitude_control = att_cont
         self._sensors = sensors
         self._engine_tilt = middle_engine_tilt
@@ -107,6 +109,7 @@ class TakeoffControlVTOL(FileConfig.FileConfig):
         self._flight_mode = SUBMODE_ASCEND
         self.RunwayAltitude = self._sensors.Altitude()
         self.DesiredAltitude = self.RunwayAltitude + self.TransitionAGL
+        self._transition_step = 0               # Current transition step number
         self._attitude_control.StartFlight(0.9)
 
     def Stop(self):
@@ -132,55 +135,67 @@ class TakeoffControlVTOL(FileConfig.FileConfig):
 
         if self._flight_mode == SUBMODE_ASCEND:
             if self.CurrentAltitude >= self.DesiredAltitude:
-                if False:   # TODO: Re-enable this code after testing
-                    self._desired_roll = 0.0
-                    self._desired_pitch = 0.0
-                    if isinstance(self.DesiredCourse, tuple):
-                        self.DesiredTrueHeading = util.TrueHeading (self.DesiredCourse)
-                    else:
-                        self.DesiredTrueHeading = self.DesiredCourse
-                    hd = self.compute_heading_difference()
-                    if abs(hd) > 2.0:
-                        self._flight_mode = SUBMODE_ROTATE
-                        self._rotate_direction = 1 if hd > 0 else -1
-                        self.compute_heading_rate(hd)
-                    else:
-                        self._flight_mode = SUBMODE_TRANSITION_PRIME
+                self._desired_roll = 0.0
+                self._desired_pitch = 0.0
+                if isinstance(self.DesiredCourse, tuple):
+                    self.DesiredTrueHeading = util.TrueHeading (self.DesiredCourse)
                 else:
-                    self.get_next_directive()
-        elif self._flight_mode == SUBMODE_ROTATE:
-            self.compute_heading_rate()
-            if self._desired_heading_rate_change * self._rotate_direction <= 0:
-                self._desired_heading_rate_change = 0.0
+                    self.DesiredTrueHeading = self.DesiredCourse
                 self._flight_mode = SUBMODE_TRANSITION_PRIME
         elif self._flight_mode == SUBMODE_TRANSITION_PRIME:
-            self._desired_pitch = -5.0      # Pitch forward to achieve forward movement
-            self._desired_roll = 0.0
-            if self.TransitionSteps[self._transition_step][0] > 10:
-                # Engines are now facing foward enough that a differential would cause unwanted yaw.
-                # Just thrust forward
-                throttle_overrides = [None, None, 0.7, 0.7, None, None]
-                use_control_surfaces = True
-                self._sensors.FlightMode(Globals.FLIGHT_MODE_AIRBORN, True)
-            if self._sensors.AirSpeed() >= self.TransitionSteps[self._transition_step][1]:
-                self._transition_step += 1
-                if self._transition_step >= len(self.TransitionSteps):
-                    self._flight_mode = SUBMODE_TRANSITION_SECONDARY
-                    self._vtol_engine_release.Set(1)
-                    throttle_overrides = [.1, .1, 1.0, 1.0, .3, .3]
-                else:
-                    self._engine_tilt.Set(self.TransitionSteps[self._transition_step][0])
+            aborted = False
+            if self.LandAfterReachingState.startswith (SUBMODE_TRANSITION_PRIME):
+                state_length = 0
+                if self.LandAfterReachingState.find ('.') > 0:
+                    try:
+                        state_length = int(self.LandAfterReachingState.rsplit('.', 1)[1])
+                    except Exception,e:
+                        logger.error ("%s: Unable to read land command substate penetration", str(e))
+                if self._transition_step >= state_length:
+                    aborted = True
+                    self.get_next_directive()
+
+            if not aborted:
+                self._desired_pitch = 0.0
+                self._desired_roll = 0.0
+                if self.TransitionSteps[self._transition_step][0] > 10:
+                    # Engines are now facing foward enough that a differential would cause unwanted yaw.
+                    # Just thrust forward
+                    throttle_overrides = [None, None, 0.7, 0.7, None, None]
+                    use_control_surfaces = True
+                    self._sensors.FlightMode(Globals.FLIGHT_MODE_AIRBORN, True)
+                if self._sensors.AirSpeed() >= self.TransitionSteps[self._transition_step][1]:
+                    self._transition_step += 1
+                    if self._transition_step >= len(self.TransitionSteps):
+                        self._flight_mode = SUBMODE_TRANSITION_SECONDARY
+                        self._vtol_engine_release.Set(1)
+                        throttle_overrides = [.1, .1, 1.0, 1.0, .3, .3]
+                        self._transition_step = self._sensors.Time()
+                    else:
+                        self._engine_tilt.Set(self.TransitionSteps[self._transition_step][0])
         elif self._flight_mode == SUBMODE_TRANSITION_SECONDARY:
             # Release tilt locks, apply movement slowing brakes, add power to rear engine, and
             # apply downward elevator to compensate for rear engine upward thrust.
             # Adding power to the rear engines will cause the front and back engines to tilt
             # into forward flight mode. The movement brakes will force the transition to be
             # gradual enough for a smooth transition.
+            if self.LandAfterReachingState.startswith (SUBMODE_TRANSITION_SECONDARY):
+                state_length = 0
+                if self.LandAfterReachingState.find ('.') > 0:
+                    try:
+                        state_length = float(self.LandAfterReachingState.rsplit('.', 1)[1])
+                    except Exception,e:
+                        logger.error ("%s: Unable to read land command substate penetration", str(e))
+                if self._transition_step + state_length < self._sensors.Time():
+                    self.get_next_directive()
+
             use_control_surfaces = True
             throttle_overrides = [.1, .1, 1.0, 1.0, .3, .3]
             self._desired_pitch = 0.0
             self._desired_roll = 0.0
             if self._sensors.OuterEnginePosition() == "forward":
+                if self.LandAfterReachingState.startswith (SUBMODE_TRANSITION_SECONDARY):
+                    logger.info ("Reached end of secondary transition")
                 self._vtol_engine_release.Set(0)
                 self.get_next_directive()
 
@@ -194,7 +209,9 @@ class TakeoffControlVTOL(FileConfig.FileConfig):
                 self._journal_file.flush()
                 self._journal_flush_count = 0
 
-        logger.log (3, "Ascend desired pitch = %g, roll=%g"%(self._desired_pitch, self._desired_roll))
+        self.compute_heading_rate()
+        logger.log (3, "Ascend desired pitch = %g, roll=%g, heading_rate=%g",
+                self._desired_pitch, self._desired_roll, self._desired_heading_rate_change)
         self._attitude_control.UpdateControls (self._desired_pitch, self._desired_roll,
                 self._desired_heading_rate_change, self._desired_climb_rate, 
                 use_control_surfaces, throttle_overrides)
@@ -210,7 +227,7 @@ class TakeoffControlVTOL(FileConfig.FileConfig):
                 self.HeadingAchievementSeconds, self.MaxHeadingRate)
 
     def compute_heading_difference(self):
-        heading_difference = self.DesiredTrueHeading - (self.CurrentHeading + self.MagneticDeclination)
+        heading_difference = self.DesiredTrueHeading - (self.CurrentHeading - self.MagneticDeclination)
         if heading_difference > 180.0:
             heading_difference -= 360.0
         elif heading_difference < -180.0:

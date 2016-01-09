@@ -262,6 +262,9 @@ class XplaneSensors:
         assert(self.sensor_suite[18][1] == "AGL")
         return (self.sensor_suite[18][0])
 
+    def OuterEnginePosition(self):
+        return "vertical"
+
     def ProcessIncoming(self):
         global control
         while True:

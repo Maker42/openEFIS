@@ -165,6 +165,10 @@ class Sensors:
         else:
             return 0.0
 
+    def OuterEnginePosition(self):
+        # TODO: Complete sensor loop
+        return "vertical"
+
     def Time(self):
         return time.time()
 

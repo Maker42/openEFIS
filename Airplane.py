@@ -37,6 +37,9 @@ class Airplane(FileConfig.FileConfig):
         self.BatteryMinReserve = 30
         self.ApproachEndpoints = list()
         self.RunwayAltitude = 0
+        self.RunwayTouchdownPoint = None
+        self.RunwayHeading = 0
+        self.RunwayLength = 0
 
 
         self.DesiredCourse = [(0,0), (0,0)]
@@ -120,9 +123,21 @@ class Airplane(FileConfig.FileConfig):
             self._VTOL_engine_release_control.SetServoController(self._servo_controller)
         if self._forward_engine_release_control:
             self._forward_engine_release_control.SetServoController(self._servo_controller)
+        self.ComputeRunwayEndpoints()
 
-        self.RunwayAltitude = self._sensors.Altitude()
-        self.ApproachEndpoints = [self._sensors.Position(), self._sensors.Position()]
+    def ComputeRunwayEndpoints(self):
+        if self.RunwayAltitude == 0:
+            self.RunwayAltitude = self._sensors.Altitude()
+        if len(self.ApproachEndpoints) == 0:
+            if self.RunwayTouchdownPoint != None:
+                position = self.RunwayTouchdownPoint
+            else:
+                position = self._sensors.Position()
+            if self.RunwayLength > 0:
+                end = util.AddPosition(position, self.RunwayLength, self.RunwayHeading)
+            else:
+                end = position
+            self.ApproachEndpoints = [position, end]
 
     def init_attitude_control(self, args, filelines):
         if not (self._aileron_control and self._elevator_control and self._rudder_control and self._sensors):
@@ -302,12 +317,22 @@ class Airplane(FileConfig.FileConfig):
         self._flight_control.StraightAndLevel(desired_altitude, desired_airspeed, desired_heading)
 
     # Inputs specify touchdown point and (exact) heading and altitude of runway
-    def Land(self):
-        assert (self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN)
-        self.ChangeMode (Globals.FLIGHT_MODE_LANDING)
-        self.DesiredCourse = self.ApproachEndpoints
-        self.RunwayAltitude = self.RunwayAltitude
-        self._landing_control.Land(self.DesiredCourse, self.RunwayAltitude)
+    def Land(self, touchdown=None, length=0, heading=-1, end=None):
+        if (self.CurrentFlightMode == Globals.FLIGHT_MODE_GROUND):
+            self._throttle_control.Set(0)
+        else:
+            if touchdown:
+                self.RunwayTouchdownPoint = touchdown
+                if end:
+                    self.ApproachEndpoints = [position, end]
+            if length:
+                self.RunwayLength = length
+            if heading >= 0:
+                self.RunwayHeading = heading
+            self.ComputeRunwayEndpoints()
+            self.ChangeMode (Globals.FLIGHT_MODE_LANDING)
+            self.DesiredCourse = self.ApproachEndpoints
+            self._landing_control.Land(self.DesiredCourse, self.RunwayAltitude)
 
     def Update(self):
         if self.has_crashed():
