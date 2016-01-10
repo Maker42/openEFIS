@@ -350,8 +350,12 @@ class FlightControl(FileConfig.FileConfig):
         turn_radius = (360.0 * (self.DesiredAirSpeed / 60.0) / self.TurnRate) / (4 * util.M_PI)
         turn_radius *= self.InterceptMultiplier
         if abs(side) > turn_radius:
-            heading_direction = heading_to_dest - course_heading
-            if heading_direction > 0:
+            diff = heading_to_dest - course_heading
+            if diff > 180:
+                diff -= 360
+            elif diff < -180:
+                diff += 360
+            if diff > 0:
                 intercept_heading = course_heading + 90
             else:
                 intercept_heading = course_heading - 90
@@ -547,7 +551,12 @@ class FlightControl(FileConfig.FileConfig):
             self._journal_file = None
 
     def completed_turn(self):
-        return (abs(self.CurrentTrueHeading - self.DesiredTrueHeading) < 3.0)
+        diff = self.CurrentTrueHeading - self.DesiredTrueHeading
+        if diff > 180:
+            diff -= 360
+        elif diff < -180:
+            diff += 360
+        return (abs(diff) < 3.0)
 
     def completed_course(self):
         # The course is considered completed if the aircraft has crossed the line

@@ -199,7 +199,7 @@ def AddPosition(position, distance, direction, rel_lng = 0.0):
         rel_lng = GetRelLng(position[1])
     direction *= M_PI / 180.0
     dlat = distance * math.cos(direction) / 60.0
-    dlng = distance * math.sin(direction) * rel_lng / 60.0
+    dlng = distance * math.sin(direction) / (rel_lng * 60.0)
     position = (position[0] + dlng, position[1] + dlat)
     return position
 
