@@ -13,11 +13,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-import time, logging
+import time, logging, asyncore
 
-import PID, FileConfig, Globals
+import PID, FileConfig, Globals, util
 
-import SenseControl
+import SenseControl, CommandControl
 import Xplane, SurfaceControl, AttitudeControl, FlightControl, AttitudeControlVTOL
 import TakeoffControlVTOL, LandingControlVTOL, AttitudeVTOLEstimation
 import MiddleEngineTiltControl, VTOLYawControl, SolenoidControl, ThrottleControl
@@ -124,6 +124,7 @@ class Airplane(FileConfig.FileConfig):
         if self._forward_engine_release_control:
             self._forward_engine_release_control.SetServoController(self._servo_controller)
         self.ComputeRunwayEndpoints()
+        Globals.TheAircraft = self
 
     def ComputeRunwayEndpoints(self):
         if self.RunwayAltitude == 0:
@@ -354,6 +355,8 @@ class Airplane(FileConfig.FileConfig):
             self._landing_control.Update()
         elif self.CurrentFlightMode == Globals.FLIGHT_MODE_TAKEOFF:
             self._takeoff_control.Update()
+        if self._command_control:
+            asyncore.loop(0.001, count=1)
         return self._return_state
 
     def ChangeMode(self, newmode):

@@ -13,7 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-import time, logging
+import time, logging, math
 
 import PID
 import FileConfig
@@ -46,7 +46,6 @@ class FlightControl(FileConfig.FileConfig):
         self.CurrentAirSpeed = sensors.AirSpeed()
         self.CurrentClimbRate = sensors.ClimbRate()
         self.CurrentPosition = sensors.Position()
-        self._turn_start = sensors.TrueHeading()
         self._journal_file = None
         self._journal_flush_count = 0
         self._in_pid_optimization = ''
@@ -61,7 +60,7 @@ class FlightControl(FileConfig.FileConfig):
 
         self._flight_mode = SUBMODE_COURSE
         self._callback = callback
-        self._turn_degrees = 0
+        self._force_turn_direction = 0
         self._swoop_low_alt = sensors.Altitude()
 
         # Configuration properties
@@ -78,14 +77,11 @@ class FlightControl(FileConfig.FileConfig):
         self.ThrottlePIDTuningParams = None
         self.RollCurve = [(0.0, 0.0), (5.0, 5.0), (10.0, 20.0), (20.0, 30.0)]
 
-        self.HsiFactor = 10.0
+        self.InterceptMultiplier = 35
         self.MaxRoll = 30.0
-        # SecondsHeadingCorrection: How many seconds do we want to consume to achieve a desired heading
-        # correction (within the limits of roll)
-        self.SecondsHeadingCorrection = 2.0
 
         self.MaxPitchChangePerSample = 1.0
-        self.TurnRadius = 1.0/300.0         # 1/5 of a nautical mile
+        self.TurnRate = 180.0         # 180 degrees per minute at max rol
         self.ClimbRateCurve = None
 
         # Will Use one of the following 2 PIDS to request pitch angle:
@@ -265,6 +261,7 @@ class FlightControl(FileConfig.FileConfig):
         self.CurrentAirSpeed = self._sensors.AirSpeed()
         self.CurrentTrueHeading = self._sensors.TrueHeading()
         if self._flight_mode == SUBMODE_TURN:
+            self._desired_roll = self.compute_roll(self.DesiredTrueHeading)
             if self.completed_turn():
                 self.get_next_directive()
                 return
@@ -292,7 +289,7 @@ class FlightControl(FileConfig.FileConfig):
                     self._throttlePID.SetMode (PID.AUTOMATIC, self.CurrentAirSpeed,
                             self._throttle_control.GetCurrent())
 
-            if self._flight_mode == SUBMODE_STRAIGHT:
+            if self._flight_mode != SUBMODE_COURSE:
                 roll = self.compute_roll(self.DesiredTrueHeading)
             else:
                 roll = self.compute_roll_from_course()
@@ -349,27 +346,41 @@ class FlightControl(FileConfig.FileConfig):
     # Compute a good self._desired_heading_rate_change based on the course, speed, heading and position
     def compute_roll_from_course(self):
         pos = self._sensors.Position()
-        course_heading = util.TrueHeading(self.DesiredCourse, "compute_roll_from_course TrueHeading:", 100)
-        heading_to_dest = util.TrueHeading ([pos, self.DesiredCourse[1]])
-        heading_error = (heading_to_dest - course_heading)
-        # Handle wrap around
-        if heading_error > 180:
-            heading_error -= 360
-        elif heading_error < -180:
-            heading_error += 360
-
-        # TODO: Limit correction heading as we get close to the destination (sigmoid function?)
-        correction_heading = heading_error * self.HsiFactor
-        if abs(correction_heading) > 90:
-            # TODO: Signal back to flight director of way off course
-            correction_heading = 90 if correction_heading > 0 else -90
-        intercept_heading = course_heading + correction_heading
+        side, forward, course_heading, heading_to_dest = util.CourseDeviation(pos, self.DesiredCourse)
+        turn_radius = (360.0 * (self.DesiredAirSpeed / 60.0) / self.TurnRate) / (4 * util.M_PI)
+        turn_radius *= self.InterceptMultiplier
+        if abs(side) > turn_radius:
+            heading_direction = heading_to_dest - course_heading
+            if heading_direction > 0:
+                intercept_heading = course_heading + 90
+            else:
+                intercept_heading = course_heading - 90
+        else:
+            d1 = turn_radius - abs(side)
+            # cos(a1) = d1 / turn_radius
+            a1 = math.acos (d1 / turn_radius) * util.DEG_RAD
+            if side > 0:
+                intercept_heading = course_heading - a1
+            else:
+                intercept_heading = course_heading + a1
+            # Example 1: course_heading = 0, side = .1, turn_radius = .5
+            #   d1 = .4
+            #   a1 = acos (.4 / .5) = 37 degrees
+            #   ih = -37
+            # Example 2: course_heading = 0, side = 0, turn_radius = .5
+            #   d1 = .5
+            #   a1 = acos (.5 / .5) = 0 degrees
+            #   ih = 0
+            # Example 3: course_heading = 0, side = -.1, turn_radius = .5
+            #   d1 = .4
+            #   a1 = acos (.4 / .5) = 37 degrees
+            #   ih = 37
         #util.log_occasional_info("compute_roll_from_course",
-        #        "cur_pos = (%g,%g), to=(%g,%g), course_h=%g, h_dest=%g, h_err = %g, cor=%g, intercept=%g"%(
+        #        "cur_pos = (%g,%g), to=(%g,%g), course_h=%g, h_dest=%g, side = %g, forward=%g, intercept=%g"%(
         #            pos[0], pos[1],
         #            self.DesiredCourse[1][0], self.DesiredCourse[1][1],
-        #            course_heading, heading_to_dest, heading_error, correction_heading, intercept_heading), 100)
-        self.compute_roll(intercept_heading)
+        #            course_heading, heading_to_dest, side, forward, intercept_heading), 100)
+        return self.compute_roll(intercept_heading)
 
     def compute_roll(self, intercept_heading):
         heading_error = intercept_heading - self.CurrentTrueHeading
@@ -378,6 +389,18 @@ class FlightControl(FileConfig.FileConfig):
             heading_error -= 360
         elif heading_error < -180:
             heading_error += 360
+        if self._force_turn_direction < 0:
+            if heading_error <= 0:
+                self._force_turn_direction = 0
+            else:
+                while heading_error >= 0:
+                    heading_error -= 360
+        elif self._force_turn_direction > 0:
+            if heading_error >= 0:
+                self._force_turn_direction = 0
+            else:
+                while heading_error <= 0:
+                    heading_error += 360
         # heading rate change in degrees per second
         ret = util.rate_curve (heading_error, self.RollCurve)
         return ret
@@ -387,28 +410,24 @@ class FlightControl(FileConfig.FileConfig):
         self.DesiredCourse = course
         self.DesiredAltitude = alt
 
-    def TurnTo(self, degrees, roll_angle, alt):
-        logger.debug ("Flight control turning to %g, roll %g, alt %d", degrees, roll_angle, alt)
+    def TurnTo(self, heading, roll_angle = 0, alt = 0):
+        logger.debug ("Flight control turning to %g, roll %g, alt %d", heading, roll_angle, alt)
         self._flight_mode = SUBMODE_TURN
-        self._turn_start = self._sensors.TrueHeading()
-        direction = degrees - self._turn_start
-        if direction < -180.0:
-            direction += 360.0
-        elif direction > 180.0:
-            direction -= 360.0
-        self._turn_degrees = direction
-        self._desired_roll = roll_angle
-        self.DesiredAltitude = alt
-        logger.debug("starting turn at %g", self._turn_start)
+        self._force_turn_direction = roll_angle
+        self.DesiredTrueHeading = heading
+        if alt > 0:
+            self.DesiredAltitude = alt
+        logger.debug("starting turn at %g", self._sensors.Heading())
 
-    def Turn(self, degrees, roll_angle, alt):
+    def Turn(self, degrees, roll_angle=0, alt=0):
         logger.debug ("Flight control turning %g, roll %g, alt %d", degrees, roll_angle, alt)
         self._flight_mode = SUBMODE_TURN
-        self._turn_degrees = degrees
-        self._desired_roll = roll_angle
-        self.DesiredAltitude = alt
-        self._turn_start = self._sensors.TrueHeading()
-        logger.debug("starting turn at %g", self._turn_start)
+        self._force_turn_direction = roll_angle
+        if alt > 0:
+            self.DesiredAltitude = alt
+        turn_start = self._sensors.Heading()
+        self.DesiredTrueHeading = turn_start + degrees
+        logger.debug("starting turn at %g", turn_start)
 
     def Swoop(self, course, low_alt, high_alt, min_airspeed=0):
         current_altitude = self._sensors.Altitude()
@@ -528,21 +547,7 @@ class FlightControl(FileConfig.FileConfig):
             self._journal_file = None
 
     def completed_turn(self):
-        turn_sign = 1 if self._turn_degrees > 0 else -1
-        turn_termination = (self._turn_start + self._turn_degrees) % 360
-        if turn_termination < 0:
-            turn_termination += 360
-        if turn_sign == 1:
-            if (self.CurrentTrueHeading > turn_termination and
-                    self.CurrentTrueHeading < turn_termination + self._turn_degrees / 2.0):
-                logger.debug("completed turn at %g/%g", self.CurrentTrueHeading, turn_termination)
-                return True
-        else:
-            if (self.CurrentTrueHeading < turn_termination and
-                    self.CurrentTrueHeading > turn_termination + self._turn_degrees / 2.0):
-                logger.debug("completed turn at %g/%g", self.CurrentTrueHeading, turn_termination)
-                return True
-        return False
+        return (abs(self.CurrentTrueHeading - self.DesiredTrueHeading) < 3.0)
 
     def completed_course(self):
         # The course is considered completed if the aircraft has crossed the line
@@ -561,7 +566,13 @@ class FlightControl(FileConfig.FileConfig):
         #            self.CurrentPosition[0], self.CurrentPosition[1],
         #            self.DesiredCourse[1][0], self.DesiredCourse[1][1],
         #            dlng, dlat, angle, x, y))
-        if y >= -self.TurnRadius:
+
+        # turn_circumference = airspeed(nm / minute) / turn_rate (degrees / minute) * 360 degrees
+        # turn_diameter = turn_circumference / (2 * PI)
+        # turn_radius = turn_diameter / 2
+
+        turn_radius = (360.0 * (self.DesiredAirSpeed / 60.0) / self.TurnRate) / (4 * util.M_PI)
+        if y >= -turn_radius / 60.0:
             return True
         else:
             return False

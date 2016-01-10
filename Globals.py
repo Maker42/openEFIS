@@ -41,4 +41,4 @@ CMD_10DOF_SENSOR_DATA  =3
 CMD_GPS_DATA           =4
 CMD_LOG                =250
 
-
+TheAircraft = None

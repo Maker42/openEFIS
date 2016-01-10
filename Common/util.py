@@ -71,9 +71,10 @@ def GetRelLng(lat1):
     rel_lat.sub(rel_lat_inc)
     return rel_lng.norm() / rel_lat.norm()
 
-def GetAdjustedPolarDeltas(course):
+def GetAdjustedPolarDeltas(course, rel_lng=0):
     dlng,dlat = get_polar_deltas(course)
-    rel_lng = GetRelLng(course[0][1])
+    if rel_lng == 0:
+        rel_lng = GetRelLng(course[0][1])
     return (dlng*rel_lng, dlat)
 
 # Computes true heading from a given course
@@ -197,8 +198,8 @@ def AddPosition(position, distance, direction, rel_lng = 0.0):
     if not rel_lng:
         rel_lng = GetRelLng(position[1])
     direction *= M_PI / 180.0
-    dlat = distance * math.sin(direction) / 60.0
-    dlng = disatnce * math.cos(direction) * rel_lng / 60.0
+    dlat = distance * math.cos(direction) / 60.0
+    dlng = distance * math.sin(direction) * rel_lng / 60.0
     position = (position[0] + dlng, position[1] + dlat)
     return position
 
@@ -229,3 +230,36 @@ def RMSDiff (l1, l2):
     ret = math.sqrt(sum) / length
     return ret
 
+def CourseDeviation(pos, course, rel_lng = 0):
+    if rel_lng == 0:
+        rel_lng = GetRelLng(course[0][1])
+    dlng, dlat = GetAdjustedPolarDeltas(course, rel_lng)
+    heading = atan_globe(dlng, dlat) * 180 / M_PI
+    cvec = Spatial.Vector(dlng,dlat,0)
+    up = Spatial.Vector(0,0,1)
+    pnormal = cvec.cross_product(up)
+    destpoint = Spatial.Point3(course[1][0] * rel_lng, course[1][1], 0)
+    course_plane = Spatial.Plane(destpoint, normal=pnormal)
+    curpoint = Spatial.Point3 (pos[0] * rel_lng, pos[1], 0)
+    r = Spatial.Ray(curpoint,dir=pnormal)
+    intersect = course_plane.intersect(r)
+
+    deviation_vect = Spatial.Point3(ref=intersect)
+    deviation_vect.sub(curpoint)
+    remaining_distance_vect = Spatial.Point3(ref=destpoint)
+    remaining_distance_vect.sub (intersect)
+    side = deviation_vect.norm()
+    forward = remaining_distance_vect.norm()
+    side *= 60.0        # 60 nm per degree
+    forward *= 60.0
+    dlng, dlat = GetAdjustedPolarDeltas ([pos, course[1]], rel_lng)
+    heading_to_dest = atan_globe(dlng, dlat) * 180 / M_PI
+    hdiff = heading_to_dest - heading
+    if hdiff > 180:
+        hdiff -= 360
+    elif hdiff < -180:
+        hdiff += 360
+    if hdiff > 0:
+        side *= -1
+
+    return (side, forward, heading, heading_to_dest)
