@@ -28,12 +28,15 @@ if '__main__' == __name__:
     else:
         sys.path.append (os.path.join ('Common'))
         sys.path.append (os.path.join ('Test'))
+else:
+    logger=logging.getLogger(__name__)
 
 import Globals
 
 import util
 
 command_queue = list()
+
 
 class command_request_handler(asyncore.dispatcher_with_send):
     def __init__(self, sock, queue):
@@ -64,8 +67,11 @@ class command_request_handler(asyncore.dispatcher_with_send):
                     try:
                         print ("Executing command %s"%command)
                         eval("Globals.TheAircraft." + command)
+                        self.send ("Command executed\n")
                     except Exception,e:
-                        logger.error ("Error (%s) executing command: %s", str(e), command)
+                        err = "Error (%s) executing command: %s"%(str(e), command)
+                        self.send (err + "\n")
+                        logger.error (err)
                 else:
                     self._command_queue.append(command)
 
