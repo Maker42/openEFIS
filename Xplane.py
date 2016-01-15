@@ -33,28 +33,28 @@ class XplaneControl:
         self._lookup_tables = list()
         self._throttle_table = None
         self.controls = [
-                ("sim/joystick/yoke_pitch_ratio", "YokePitch", (-1.0, 1.0)), #	The deflection of the joystick axis controlling pitch. Use override_joystick or override_joystick_pitch
-                ("sim/joystick/yoke_roll_ratio", "YokeRoll", (-1.0, 1.0)),  #	The deflection of the joystick axis controlling roll. Use override_joystick or override_joystick_roll
-                ("sim/joystick/yoke_heading_ratio", "Yaw", (-1.0, 1.0)),   #	The deflection of the joystick axis controlling yaw. Use override_joystick or override_joystick_heading
-                ("sim/flightmodel/engine/ENGN_thro_override", "Throttle", (0.0, 1.0)),  #	y	ratio	Throttle (per engine) as set by user, 0 = idle, 1 = max
+                (b"sim/joystick/yoke_pitch_ratio", "YokePitch", (-1.0, 1.0)), #	The deflection of the joystick axis controlling pitch. Use override_joystick or override_joystick_pitch
+                (b"sim/joystick/yoke_roll_ratio", "YokeRoll", (-1.0, 1.0)),  #	The deflection of the joystick axis controlling roll. Use override_joystick or override_joystick_roll
+                (b"sim/joystick/yoke_heading_ratio", "Yaw", (-1.0, 1.0)),   #	The deflection of the joystick axis controlling yaw. Use override_joystick or override_joystick_heading
+                (b"sim/flightmodel/engine/ENGN_thro_override", "Throttle", (0.0, 1.0)),  #	y	ratio	Throttle (per engine) as set by user, 0 = idle, 1 = max
                 ]
-        self.dref_struct_preamble = struct.pack("5s", "DREF")
+        self.dref_struct_preamble = struct.pack("5s", b"DREF")
         self.dref_struct_body = struct.Struct("f500s")
 
-        self.data_struct_preamble = struct.pack("5s", "DATA")
+        self.data_struct_preamble = struct.pack("5s", b"DATA")
         self.data_struct_body = struct.Struct("iffffffff")
         self.throttle_index = 26
 
-        override_joystick = self.dref_struct_preamble + self.dref_struct_body.pack(1.0, "sim/operation/override/override_joystick")
+        override_joystick = self.dref_struct_preamble + self.dref_struct_body.pack(1.0, b"sim/operation/override/override_joystick")
         self.sock.sendto (override_joystick, (self.xplane_host, self.xplane_port))
 
-        override_throttle = self.dref_struct_preamble + self.dref_struct_body.pack(1.0, "sim/operation/override/override_throttles")
+        override_throttle = self.dref_struct_preamble + self.dref_struct_body.pack(1.0, b"sim/operation/override/override_throttles")
         self.sock.sendto (override_throttle, (self.xplane_host, self.xplane_port))
 
         set_zero = [
-                        "sim/joystick/joystick_pitch_nullzone",
-                        "sim/joystick/joystick_roll_nullzone",
-                        "sim/joystick/joystick_heading_nullzone",
+                        b"sim/joystick/joystick_pitch_nullzone",
+                        b"sim/joystick/joystick_roll_nullzone",
+                        b"sim/joystick/joystick_heading_nullzone",
                    ]
         for sz in set_zero:
             szc = self.dref_struct_preamble + self.dref_struct_body.pack(0.0, sz)
@@ -124,25 +124,25 @@ class XplaneControl:
 
 class XplaneSensors:
     def __init__(self):
-        self.sensor_suite = [(0, "Altitude", "sim/flightmodel/misc/h_ind"),
-                (0, "Heading", "sim/flightmodel/position/mag_psi"),
-                (0, "Roll", "sim/flightmodel/position/true_phi"),
-                (0, "RollRate", "sim/flightmodel/position/P"),
-                (0, "Pitch", "sim/flightmodel/position/true_theta"),
-                (0, "PitchRate", "sim/flightmodel/position/Q"),
-                (0, "Yaw", "sim/flightmodel/position/beta"),
-                (0, "AirSpeed", "sim/flightmodel/position/indicated_airspeed"),
-                (0, "GroundSpeed", "sim/flightmodel/position/groundspeed"),
-                (0, "ClimbRate", "sim/flightmodel/position/vh_ind_fpm"),
-                (0, "Longitude", "sim/flightmodel/position/longitude"),
-                (0, "Latitude", "sim/flightmodel/position/latitude"),
-                (0, "MagneticDeclination", "sim/flightmodel/position/magnetic_variation"),
-                (0, "TrueHeading", "sim/flightmodel/position/true_psi"),
-                (0, "SimTime", "sim/time/total_running_time_sec"),
-                (0, "GroundTrack", "sim/flightmodel/position/hpath"),
-                (0, "WindSpeed", "sim/weather/wind_speed_kt[0]"),
-                (0, "WindDirection", "sim/weather/wind_direction_degt[0]"),
-                (0, "AGL", "sim/flightmodel/position/y_agl"),
+        self.sensor_suite = [(0, "Altitude", b"sim/flightmodel/misc/h_ind"),
+                (0, "Heading", b"sim/flightmodel/position/mag_psi"),
+                (0, "Roll", b"sim/flightmodel/position/true_phi"),
+                (0, "RollRate", b"sim/flightmodel/position/P"),
+                (0, "Pitch", b"sim/flightmodel/position/true_theta"),
+                (0, "PitchRate", b"sim/flightmodel/position/Q"),
+                (0, "Yaw", b"sim/flightmodel/position/beta"),
+                (0, "AirSpeed", b"sim/flightmodel/position/indicated_airspeed"),
+                (0, "GroundSpeed", b"sim/flightmodel/position/groundspeed"),
+                (0, "ClimbRate", b"sim/flightmodel/position/vh_ind_fpm"),
+                (0, "Longitude", b"sim/flightmodel/position/longitude"),
+                (0, "Latitude", b"sim/flightmodel/position/latitude"),
+                (0, "MagneticDeclination", b"sim/flightmodel/position/magnetic_variation"),
+                (0, "TrueHeading", b"sim/flightmodel/position/true_psi"),
+                (0, "SimTime", b"sim/time/total_running_time_sec"),
+                (0, "GroundTrack", b"sim/flightmodel/position/hpath"),
+                (0, "WindSpeed", b"sim/weather/wind_speed_kt[0]"),
+                (0, "WindDirection", b"sim/weather/wind_direction_degt[0]"),
+                (0, "AGL", b"sim/flightmodel/position/y_agl"),
                 ]
         self.previous_readings = [s[0] for s in self.sensor_suite]
         self.SamplesPerSecond = 10
@@ -155,7 +155,7 @@ class XplaneSensors:
     def initialize(self, filelines):
         global control
         dref_num = 0
-        pre = self.preamble_struct.pack ("RREF")
+        pre = self.preamble_struct.pack (b"RREF")
         for d in self.sensor_suite:
             req = self.dref_request_struct.pack(self.SamplesPerSecond, dref_num, d[2])
             control.sock.sendto(pre + req, (control.xplane_host, control.xplane_port))
@@ -280,7 +280,8 @@ class XplaneSensors:
     def _parse_input(self, rec):
         DREF_SIZE=8
         assert(self.dref_rcv_struct.size == DREF_SIZE)
-        if rec.startswith ("RREF"):
+        header = rec[:4]
+        if header  == "RREF" or header == b"RREF":
             rec = rec[5:]
             for index in range(0,len(rec),DREF_SIZE):
                 parse = rec[index:index+DREF_SIZE]
@@ -293,7 +294,7 @@ class XplaneSensors:
                     #print ("Xplane reading[%s] = %g"%(self.sensor_suite[index][1], val))
                 else:
                     logger.warning("Got input from X-Plane in index %d", index)
-        elif rec.startswith("DATA"):
+        elif header == "DATA" or header == b"DATA":
             rec = rec[5:]
             index,v1,v2,v3,v4,v5,v6,v7,v8 = self.data_struct_body.unpack(rec)
             print ("DATA[%d]: %g, %g, %g, %g,    %g, %g, %g, %g"%(index, v1, v2,v3,v4,v5,v6,v7))
