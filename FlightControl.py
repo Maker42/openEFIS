@@ -13,9 +13,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-import time, logging, math
+import time, logging, math, copy
 
-import PID
+import PID, FuzzyController
 import FileConfig
 import util
 
@@ -76,17 +76,24 @@ class FlightControl(FileConfig.FileConfig):
         self.AirspeedPitchPIDTuningParams = None
         self.ThrottlePIDTuningParams = None
         self.RollCurve = [(0.0, 0.0), (5.0, 5.0), (10.0, 20.0), (20.0, 30.0)]
+        self.ClimbPitchMeasuredFile = None
+        self.ClimbPitchGeneralFile = None
+        self.PitchExperienceFile = None
 
         self.InterceptMultiplier = 35
         self.MaxRoll = 30.0
 
         self.MaxPitchChangePerSample = 1.0
-        self.TurnRate = 180.0         # 180 degrees per minute at max rol
+        self.TurnRate = 180.0         # 180 degrees per minute at max roll
         self.ClimbRateCurve = None
 
         # Will Use one of the following 2 PIDS to request pitch angle:
         # Input: Current Climb Rate; SetPoint: Desired Climb Rate; Output: Desired Pitch Attitude
         self._climbPitchPID = None
+        self._climbPitchFuzzy = None
+        self._fuzzy_active = False
+        self._next_pitch_update_time = 0
+        self._last_pitch_parameters = None
         # Input: Current Airspeed; SetPoint: Desired Climb Airspeed; Output: Desired Pitch Attitude
         self._airspeedPitchPID = None
 
@@ -124,6 +131,18 @@ class FlightControl(FileConfig.FileConfig):
         self._airspeedPitchPID.SetSampleTime (self.PitchPIDSampleTime)
         self._throttlePID.SetSampleTime (self.ThrottlePIDSampleTime)
 
+        if self.ClimbPitchMeasuredFile:
+            fuzzy_config = list()
+            if self.ClimbPitchGeneralFile:
+                gfile = open (self.ClimbPitchGeneralFile, 'r')
+                fuzzy_config = gfile.readlines()
+                gfile.close()
+            mfile = open(self.ClimbPitchMeasuredFile, 'r')
+            fuzzy_config += mfile.readlines()
+            mfile.close()
+            self._climbPitchFuzzy = FuzzyController.FuzzyController()
+            self._climbPitchFuzzy.initialize(fuzzy_config)
+
     # Notifies that the take off roll has accompished enough speed that flight controls
     # have responsibility and authority. Activates PIDs.
     def Start(self, last_desired_pitch):
@@ -145,6 +164,7 @@ class FlightControl(FileConfig.FileConfig):
             self.SelectAirspeedPitch()
         else:
             self.SelectClimbratePitch()
+        self._next_pitch_update_time = util.millis(self._sensors.Time()) + self.PitchPIDSampleTime
 
         self._attitude_control.StartFlight()
         if self.JournalFileName and (not self._journal_file):
@@ -210,15 +230,46 @@ class FlightControl(FileConfig.FileConfig):
         return desired_pitch
 
     def UpdateClimbratePitch(self, ms):
-        self._set_pitch_pid_limits(self.PitchPIDLimits, self._climbPitchPID)
-        if self._in_pid_optimization != "climb_pitch":
-            self._climbPitchPID.SetSetPoint (self._desired_climb_rate)
-        desired_pitch = self._climbPitchPID.Compute (self.CurrentClimbRate, ms)
-        if self._in_pid_optimization == "climb_pitch":
-            self._pid_optimization_scoring.IncrementScore(self.CurrentClimbRate, desired_pitch, self._pid_optimization_goal, self._journal_file)
-        if self._journal_file and self.JournalPitch:
-            self._journal_file.write(",%g,%g,%g"%(self._desired_climb_rate, self.CurrentClimbRate, desired_pitch))
-        return desired_pitch
+        if ms >= self._next_pitch_update_time:
+            if self._last_pitch_parameters != None and self.PitchExperienceFile:
+                self._last_pitch_parameters.append(self.CurrentClimbRate)
+                ofile = open (self.PitchExperienceFile, 'a+')
+                mrule = FuzzyController.MeasuredRule(self._last_pitch_parameters, self._desired_pitch)
+                mrule.Record (ofile)
+                ofile.close()
+            self._next_pitch_update_time = ms + self.PitchPIDSampleTime
+            self._last_pitch_parameters = [self.CurrentClimbRate, self.CurrentAltitude,
+                                           self.CurrentAirSpeed, abs(self._sensors.Roll())]
+            self._set_pitch_pid_limits(self.PitchPIDLimits, self._climbPitchPID)
+            desired_pitch = None
+            if self._in_pid_optimization != "climb_pitch":
+                inputs = copy.copy(self._last_pitch_parameters)
+                inputs.append (self._desired_climb_rate)
+                # Try first to get an answer from the experienced fuzzy engine
+                if self._climbPitchFuzzy:
+                    desired_pitch = self._climbPitchFuzzy.Compute (inputs)
+                    if desired_pitch != None:
+                        if not self._fuzzy_active:
+                            self._climbPitchPID.SetMode (PID.MANUAL, self.CurrentClimbRate, self._desired_pitch)
+                        self._fuzzy_active = True
+                        logger.debug ("Got pitch from experience engine: %g", desired_pitch)
+                    else:
+                        logger.log (5, "No answer from experience engine. Trying PID")
+            # If no answer from experience, compute with PID
+            if desired_pitch == None:
+                if self._fuzzy_active:
+                    self._climbPitchPID.SetMode (PID.AUTOMATIC, self.CurrentClimbRate, self._desired_pitch)
+                if self._in_pid_optimization != "climb_pitch":
+                    self._climbPitchPID.SetSetPoint (self._desired_climb_rate)
+                self._fuzzy_active = False
+                desired_pitch = self._climbPitchPID.Compute (self.CurrentClimbRate, ms)
+            if self._in_pid_optimization == "climb_pitch":
+                self._pid_optimization_scoring.IncrementScore(self.CurrentClimbRate, desired_pitch, self._pid_optimization_goal, self._journal_file)
+            if self._journal_file and self.JournalPitch:
+                self._journal_file.write(",%g,%g,%g"%(self._desired_climb_rate, self.CurrentClimbRate, desired_pitch))
+            return desired_pitch
+        else:
+            return self._desired_pitch
 
     def _set_pitch_pid_limits(self, absolute_limits, pid, invert=False):
         amn,amx = self._find_pitch_limits(absolute_limits)
@@ -311,7 +362,6 @@ class FlightControl(FileConfig.FileConfig):
 
         self.CurrentAltitude = self._sensors.Altitude()
         self._desired_climb_rate = self.get_climb_rate()
-        logger.debug("Desired Climb Rate %g - %g ==> %g", self.DesiredAltitude, self.CurrentAltitude, self._desired_climb_rate)
 
         self.CurrentClimbRate = self._sensors.ClimbRate()
         self._desired_pitch = self.SetPitch(ms)

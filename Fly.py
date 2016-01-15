@@ -28,6 +28,7 @@ for p in sys.path:
 else:
     sys.path.append (os.path.join ('Common'))
     sys.path.append (os.path.join ('Test'))
+    sys.path.append (os.path.join ('Fuzzy'))
 
 
 if '__main__' == __name__:
@@ -41,6 +42,7 @@ if '__main__' == __name__:
     opt.add_argument('-m', '--home', default=None, help = 'Over-ride home directory for objects and procedures')
     opt.add_argument('-c', '--record', action='store_true', help = 'Create a recording in simulation')
     opt.add_argument('-p', '--pid', help = 'PID optimizer config file')
+    opt.add_argument('-i', '--pickup', type=int, help = 'Pick up the flight plan from sequence number')
     opt.add_argument('--log-level', type=int, default=logging.WARNING, help = '1 = Maximum Logging. 100 = Absolute Silence. 40 = Errors only. 10 = Basic Debug')
     opt.add_argument('-v', '--magnetic-variation', default=None, help='The magnetic variation(declination) of the current position')
     opt.add_argument('-a', '--altitude', default=None, help='The currently known altitude')
@@ -92,7 +94,7 @@ if '__main__' == __name__:
         pass
     rootlogger.addHandler(logging.FileHandler(os.path.join(Globals.LoggingPrefix, 'info.log')))
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
+    console_handler.setLevel(logging.DEBUG)
     rootlogger.addHandler(console_handler)
     rootlogger.log(99, log_start)
 
@@ -143,7 +145,13 @@ if '__main__' == __name__:
     # Uncomment the following two lines for simulations that start airborn
     craft._flight_control._throttle_control.Set(.5)
     craft.ChangeMode (Globals.FLIGHT_MODE_AIRBORN)
-    craft.DispatchCommand (craft.FlightPlan[0])
+    dispatch_command_number = 0
+    if args.pickup > 0:
+        dispatch_command_number = args.pickup
+        if dispatch_command_number >= len(craft.FlightPlan):
+            dispatch_command_number = len(craft.FlightPlan) - 1
+    craft._flight_plan_index = dispatch_command_number
+    craft.DispatchCommand (craft.FlightPlan[dispatch_command_number])
     while True:
         craft.Update()
         if args.unit_test:
