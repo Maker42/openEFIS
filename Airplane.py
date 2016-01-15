@@ -318,7 +318,7 @@ class Airplane(FileConfig.FileConfig):
         self._flight_control.StraightAndLevel(desired_altitude, desired_airspeed, desired_heading)
 
     # Inputs specify touchdown point and (exact) heading and altitude of runway
-    def Land(self, touchdown=None, length=0, heading=-1, end=None):
+    def Land(self, touchdown=None, length=0, heading=-1, end=None, runway_altitude=None):
         if (self.CurrentFlightMode == Globals.FLIGHT_MODE_GROUND):
             self._throttle_control.Set(0)
         else:
@@ -330,6 +330,8 @@ class Airplane(FileConfig.FileConfig):
                 self.RunwayLength = length
             if heading >= 0:
                 self.RunwayHeading = heading
+            if runway_altitude != None:
+                self.RunwayAltitude = runway_altitude
             self.ComputeRunwayEndpoints()
             self.ChangeMode (Globals.FLIGHT_MODE_LANDING)
             self.DesiredCourse = self.ApproachEndpoints

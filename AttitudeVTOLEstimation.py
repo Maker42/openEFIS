@@ -26,7 +26,8 @@ FEET_PER_NAUTICAL_MILE = 6076.12
 
 def UpdatePosition(pos, _time, direction, speed):
     dist = speed * _time
-    logger.debug("Position Update: %g degrees, %g feet", dist, dist * NAUTICAL_MILES_PER_DEGREE * FEET_PER_NAUTICAL_MILE)
+    logger.debug("Position Update: %g degrees, %g feet", dist,
+            dist * NAUTICAL_MILES_PER_DEGREE * FEET_PER_NAUTICAL_MILE)
 
     pos.x += dist * math.sin (direction * util.RAD_DEG)
     pos.y += dist * math.cos (direction * util.RAD_DEG)

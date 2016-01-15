@@ -110,12 +110,14 @@ class FlightControl(FileConfig.FileConfig):
         self.InitializeFromFileLines(filelines)
         ms = util.millis(self._sensors.Time())
 
-        self._climbPitchController = ControlComplex.ControlComplex(ms, self.ClimbPitchPIDTuningParams, self.PitchPIDSampleTime, self.PitchPIDLimits, self.PitchFuzzyConfig, self.ClimbPitchMeasuredFile)
+        rmn,rmx = self._get_pitch_pid_limits(self.PitchPIDLimits)
+        limits = (rmn,rmx)
+        self._climbPitchController = ControlComplex.ControlComplex(ms, self.ClimbPitchPIDTuningParams, self.PitchPIDSampleTime, limits, self.PitchFuzzyConfig, self.ClimbPitchMeasuredFile)
 
         kp,ki,kd = self.AirspeedPitchPIDTuningParams
         self._airspeedPitchPID = PID.PID(0, kp, ki, kd, PID.DIRECT, ms)
-        mn,mx = self.PitchPIDLimits
-        self._airspeedPitchPID.SetOutputLimits (mn, mx)
+        rmn,rmx = self._get_pitch_pid_limits(self.PitchPIDLimits, True)
+        self._airspeedPitchPID.SetOutputLimits (rmn, rmx)
 
         kp,ki,kd = self.ThrottlePIDTuningParams
         self._throttlePID = PID.PID(0, kp, ki, kd, PID.DIRECT, ms)
@@ -239,7 +241,7 @@ class FlightControl(FileConfig.FileConfig):
             return absolute_limits
         roll = abs(self._sensors.Roll())
         max_pitch = util.rate_curve(roll, absolute_limits)
-        return self._min_pitch,max_pitch
+        return -max_pitch,max_pitch
 
     def Stop(self):
         self._throttlePID.SetMode (PID.MANUAL, self.CurrentAirSpeed, self._throttle_control.GetCurrent())
