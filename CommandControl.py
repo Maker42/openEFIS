@@ -66,8 +66,10 @@ class command_request_handler(asyncore.dispatcher_with_send):
                 if immediate:
                     try:
                         print ("Executing command %s"%command)
-                        eval("Globals.TheAircraft." + command)
-                        self.send ("Command executed\n")
+                        feedback = eval("Globals.TheAircraft." + command)
+                        if not feedback:
+                            feedback = "No feedback."
+                        self.send ("Command executed. %s\n"%feedback)
                     except Exception,e:
                         err = "Error (%s) executing command: %s"%(str(e), command)
                         self.send (err + "\n")

@@ -261,12 +261,20 @@ class Airplane(FileConfig.FileConfig):
         self.DesiredCourse = runway_endpoints
         self._takeoff_control.Takeoff (runway_endpoints)
 
-    def NextWayPoint(self, next_waypoint, desired_altitude):
+    def NextWayPoint(self, next_waypoint, desired_altitude=0, desired_airspeed=0):
         assert (self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN)
         last_waypoint = self.DesiredCourse[1]
         self.DesiredCourse = [last_waypoint, next_waypoint]
-        self.DesiredAltitude = desired_altitude
+        heading,distance,_ = util.TrueHeadingAndDistance (self.DesiredCourse)
+        ret = "Flying to waypoint %g nm away, bearing %g degrees, with altitude %g"%(
+                    distance, heading, desired_altitude, desired_airspeed)
+        logger.info(ret)
+        if desired_altitude:
+            self.DesiredAltitude = desired_altitude
+        if desired_airspeed:
+            self.DesiredAirSpeed = desired_airspeed
         self._flight_control.FollowCourse(self.DesiredCourse, self.DesiredAltitude)
+        return ret
 
     def Swoop(self, low_alt, high_alt, min_airspeed = 0, course = None):
         if not course:
@@ -276,46 +284,71 @@ class Airplane(FileConfig.FileConfig):
     def FlyCourse(self, course, desired_altitude=0, desired_airspeed=0):
         assert (self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN)
         self.DesiredCourse = course
+        heading,_a,_ = util.TrueHeadingAndDistance (self.DesiredCourse)
+        curpos = self._sensors.Position()
+        dist = [curpos, course[1]]
+        _a,distance,_ = util.TrueHeadingAndDistance (dist)
+        ret = "Flying course with destination waypoint %g nm away, bearing %g degrees, with altitude %g, airspeed %g"%(
+                    distance, heading, desired_altitude, desired_airspeed)
+        logger.info (ret)
         if desired_altitude:
             self.DesiredAltitude = desired_altitude
         if desired_airspeed:
             self.DesiredAirSpeed = desired_airspeed
         self._flight_control.FlyCourse (course, desired_altitude, desired_airspeed)
+        return ret
 
     def FlyTo(self, next_waypoint, desired_altitude=0, desired_airspeed=0):
         assert (self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN)
         last_waypoint = self._sensors.Position()
         self.DesiredCourse = [last_waypoint, next_waypoint]
+        heading,distance,_ = util.TrueHeadingAndDistance (self.DesiredCourse)
+        ret = "Flying to waypoint %g nm away, bearing %g degrees, with altitude %g, airspeed %g"%(
+                    distance, heading, desired_altitude, desired_airspeed)
+        logger.info (ret)
         if desired_altitude:
             self.DesiredAltitude = desired_altitude
         if desired_airspeed:
             self.DesiredAirSpeed = desired_airspeed
         self._flight_control.FlyTo (next_waypoint, desired_altitude, desired_airspeed)
+        return ret
 
     def TurnTo(self, degrees, roll, desired_altitude=0):
-        logger.debug ("Turning to %g degrees with roll %g at altitude %d", degrees, roll, desired_altitude)
+        ret = "Turning to %g degrees with roll %g at altitude %d"%(degrees, roll, desired_altitude)
+        logger.info (ret)
         assert (self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN)
         if desired_altitude:
             self.DesiredAltitude = desired_altitude
         self._flight_control.TurnTo (degrees, roll, self.DesiredAltitude)
+        return ret
 
     def Turn(self, degrees, roll, desired_altitude=0):
-        logger.debug ("Turning %g degrees with roll %g at altitude %d", degrees, roll, desired_altitude)
+        ret = "Turning %g degrees with roll %g at altitude %d"%(degrees, roll, desired_altitude)
+        logger.info (ret)
         assert (self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN)
         if desired_altitude:
             self.DesiredAltitude = desired_altitude
         self._flight_control.Turn (degrees, roll, self.DesiredAltitude)
+        return ret
 
     def ChangeAltitude(self, desired_altitude):
         assert (self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN)
+        ret = "New altitude %g"%desired_altitude
+        logger.info (ret)
         self.DesiredAltitude = desired_altitude
         self._flight_control.DesiredAltitude = desired_altitude
+        return ret
 
     def StraightAndLevel(self, dtime, desired_altitude=0, desired_airspeed=0, desired_heading=None):
+        ret = "Flying Straight and Level for %g seconds, alt=%s, airspeed=%s, heading=%s"%(
+                dtime, str(desired_altitude),
+                str(desired_airspeed), str(desired_heading))
+        logger.info (ret)
         self._current_directive_end_time = self._sensors.Time() + dtime
         if desired_altitude:
             self.DesiredAltitude = desired_altitude
         self._flight_control.StraightAndLevel(desired_altitude, desired_airspeed, desired_heading)
+        return ret
 
     # Inputs specify touchdown point and (exact) heading and altitude of runway
     def Land(self, touchdown=None, length=0, heading=-1, end=None, runway_altitude=None):

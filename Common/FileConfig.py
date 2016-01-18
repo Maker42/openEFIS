@@ -29,7 +29,7 @@ class FileConfig:
 
     def InitializeFromFileLines(self, filelines):
         if len(filelines) > 0:
-            logger.debug("start reading for %s at %s", str(self), filelines[0])
+            logger.log (5, "start reading for %s at %s", str(self), filelines[0])
         while len(filelines) > 0:
             args = filelines[0].split()
             if len(args) == 0:
@@ -68,7 +68,7 @@ class FileConfig:
                     break
                 else:
                     line_not_processed = True
-                    logger.debug("unrecognized configuration word %s for %s", args[0], str(self))
+                    logger.log (5, "unrecognized configuration word %s for %s", args[0], str(self))
                     break
             else:
                 if self._double_arg_actions != None and str(args[0]) in self._double_arg_actions:
@@ -92,7 +92,7 @@ class FileConfig:
                     del filelines[0]
                     break
                 else:
-                    logger.debug("unrecognized configuration word %s for %s", args[0], str(self))
+                    logger.log (5, "unrecognized configuration word %s for %s", args[0], str(self))
                     line_not_processed = True
                     break
             if self.is_ending_arg(args):
@@ -100,9 +100,9 @@ class FileConfig:
                     del filelines[0]
                 break
         if (len(filelines) > 0):
-            logger.debug("end reading for %s at %s", str(self), filelines[0])
+            logger.log (5, "end reading for %s at %s", str(self), filelines[0])
         else:
-            logger.debug("end reading for %s at EOF", str(self))
+            logger.log (5, "end reading for %s at EOF", str(self))
 
 
     def is_ending_arg(self, args):
