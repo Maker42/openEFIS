@@ -122,5 +122,11 @@ if '__main__' == __name__:
     client_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client_sock.connect ((args.server_address, args.server_port))
     client_sock.send (args.command)
+    client_sock.settimeout(1.0)
+    try:
+        feedback = client_sock.recv(1024)
+        print ("Sent command. Got: %s"%feedback)
+    except:
+        print ("Sent command. No feedback received")
     client_sock.close()
 
