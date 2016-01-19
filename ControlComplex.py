@@ -34,15 +34,15 @@ class ControlComplex:
         self._sample_period = sample_period
         self._last_output = None
         self._fuzzy = None
-        if fuzzy_measured:
+        if fuzzy_main_config:
             fuzzy_config = list()
-            if fuzzy_main_config:
-                gfile = open (fuzzy_main_config, 'r')
-                fuzzy_config = gfile.readlines()
-                gfile.close()
-            mfile = open(fuzzy_measured, 'r')
-            fuzzy_config += mfile.readlines()
-            mfile.close()
+            gfile = open (fuzzy_main_config, 'r')
+            fuzzy_config = gfile.readlines()
+            gfile.close()
+            if fuzzy_measured:
+                mfile = open(fuzzy_measured, 'r')
+                fuzzy_config += mfile.readlines()
+                mfile.close()
             self._fuzzy = FuzzyController.FuzzyController()
             self._fuzzy.initialize(fuzzy_config)
         self._fuzzy_active = True
@@ -58,11 +58,15 @@ class ControlComplex:
     def Compute(self, inputs, ms, experience_file, new_pid_limits=None):
         if ms >= self._next_update_time:
             if self._last_parameters != None and experience_file:
-                self._last_parameters[-1] = inputs[0]
-                ofile = open (experience_file, 'a+')
-                mrule = FuzzyController.MeasuredRule(self._last_parameters, self._last_output)
-                mrule.Record (ofile)
-                ofile.close()
+                self._last_parameters[-1] = inputs[0] # Desired value become actual measured value
+                if self._fuzzy.CompareSets (inputs, self._last_parameters, (1, len(inputs)-1)):
+                    # Record only if the conditions throughout the period are relatively static
+                    ofile = open (experience_file, 'a+')
+                    mrule = FuzzyController.MeasuredRule(self._last_parameters, self._last_output)
+                    mrule.Record (ofile)
+                    ofile.close()
+                else:
+                    logger.debug ("Measured rule not recorded because conditions changed too much")
             self._next_update_time = ms + self._sample_period
             output = None
             if not self._in_pid_optimization:
