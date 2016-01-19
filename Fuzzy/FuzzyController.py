@@ -199,6 +199,18 @@ class FuzzyController(FileConfig.FileConfig):
         else:
             return None
 
+    def CompareSets(self, inp1, inp2, irange):
+        b,e = irange
+        for i in range(b,e):
+            s1 = efll.FuzzySet(inp1[i] - self.InputAntecedentsWidth[i],
+                               inp1[i], inp1[i],
+                               inp1[i] + self.InputAntecedentsWidth[i])
+            s1.calculatePertinence (inp2[i])
+            if s1.getPertinence() == 0:
+                return False
+        else:
+            return True
+
 
 class MeasuredRule(FileConfig.FileConfig):
     def __init__(self, inputs = None, output = None):

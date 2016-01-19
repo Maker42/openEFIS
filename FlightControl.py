@@ -1,4 +1,4 @@
-# Copyright (C) 2015  Garrett Herschleb
+# Copyright (C) 2016  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -13,9 +13,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-import time, logging, math, copy
+import time, logging, math
 
-import PID, ControlComplex
+import PID
 import FileConfig
 import util
 
@@ -56,7 +56,6 @@ class FlightControl(FileConfig.FileConfig):
         self._desired_heading = 0
         self._desired_roll = 0
         self._desired_pitch = 0
-        self._current_pitch_mode = None
 
         self._flight_mode = SUBMODE_COURSE
         self._callback = callback
@@ -76,24 +75,21 @@ class FlightControl(FileConfig.FileConfig):
         self.AirspeedPitchPIDTuningParams = None
         self.ThrottlePIDTuningParams = None
         self.RollCurve = [(0.0, 0.0), (5.0, 5.0), (10.0, 20.0), (20.0, 30.0)]
-        self.ClimbPitchMeasuredFile = None
-        self.PitchFuzzyConfig = None
-        self.PitchExperienceFile = None
 
-        self.InterceptMultiplier = 35
+        self.InterceptMultiplier = 20
         self.MaxRoll = 30.0
 
         self.MaxPitchChangePerSample = 1.0
         self.TurnRate = 180.0         # 180 degrees per minute at max roll
         self.ClimbRateCurve = None
 
+        self.ClimbPitchCurve = None
+        self.ClimbPitchCurveMaxPerformance = None
+        self.ClimbPitchCurveCruise = None
+
         # Will Use one of the following 2 PIDS to request pitch angle:
         # Input: Current Climb Rate; SetPoint: Desired Climb Rate; Output: Desired Pitch Attitude
-        self._climbPitchController = None
-        self._climbPitchFuzzy = None
-        self._fuzzy_active = False
-        self._next_pitch_update_time = 0
-        self._last_pitch_parameters = None
+        self._climbPitchPID = None
         # Input: Current Airspeed; SetPoint: Desired Climb Airspeed; Output: Desired Pitch Attitude
         self._airspeedPitchPID = None
 
@@ -110,18 +106,25 @@ class FlightControl(FileConfig.FileConfig):
         self.InitializeFromFileLines(filelines)
         ms = util.millis(self._sensors.Time())
 
-        rmn,rmx = self._get_pitch_pid_limits(self.PitchPIDLimits)
-        limits = (rmn,rmx)
-        self._climbPitchController = ControlComplex.ControlComplex(ms, self.ClimbPitchPIDTuningParams, self.PitchPIDSampleTime, limits, self.PitchFuzzyConfig, self.ClimbPitchMeasuredFile)
+        self.ClimbPitchCurve = self.ClimbPitchCurveCruise
+
+        kp,ki,kd = self.ClimbPitchPIDTuningParams
+        self._climbPitchPID = PID.PID(0, kp, ki, kd, PID.DIRECT, ms)
+        if isinstance(self.PitchPIDLimits,tuple):
+            mn,mx = self.PitchPIDLimits
+        else:
+            _,mx = self.PitchPIDLimits[0]
+            mn = -mx
+        self._climbPitchPID.SetOutputLimits (mn, mx)
 
         kp,ki,kd = self.AirspeedPitchPIDTuningParams
         self._airspeedPitchPID = PID.PID(0, kp, ki, kd, PID.DIRECT, ms)
-        rmn,rmx = self._get_pitch_pid_limits(self.PitchPIDLimits, True)
-        self._airspeedPitchPID.SetOutputLimits (rmn, rmx)
+        self._airspeedPitchPID.SetOutputLimits (mn, mx)
 
         kp,ki,kd = self.ThrottlePIDTuningParams
         self._throttlePID = PID.PID(0, kp, ki, kd, PID.DIRECT, ms)
 
+        self._climbPitchPID.SetSampleTime (self.PitchPIDSampleTime)
         self._airspeedPitchPID.SetSampleTime (self.PitchPIDSampleTime)
         self._throttlePID.SetSampleTime (self.ThrottlePIDSampleTime)
 
@@ -142,11 +145,6 @@ class FlightControl(FileConfig.FileConfig):
         self.CurrentClimbRate = self._sensors.ClimbRate()
 
         self._desired_pitch = last_desired_pitch
-        if self._throttle_control.GetCurrent() == self._throttle_range[1] and self.CurrentAirSpeed <= self.MinClimbAirSpeed and self._desired_climb_rate > 0:
-            self.SelectAirspeedPitch()
-        else:
-            self.SelectClimbratePitch()
-        self._next_pitch_update_time = util.millis(self._sensors.Time()) + self.PitchPIDSampleTime
 
         self._attitude_control.StartFlight()
         if self.JournalFileName and (not self._journal_file):
@@ -161,48 +159,30 @@ class FlightControl(FileConfig.FileConfig):
 
     def SetPitch(self, ms):
         # Figure out if we're using air speed or climb rate to select pitch:
-        if self._current_pitch_mode == "climb":
-            if self._throttle_control.GetCurrent() == self._throttle_range[1] and self.CurrentAirSpeed <= self.MinClimbAirSpeed and self._desired_climb_rate > 0:
-                # Change to Use airspeed to control pitch
-                self.SelectAirspeedPitch()
-                ret = self.UpdateAirspeedPitch(ms)
+        if (self._throttle_control.GetCurrent() == self._throttle_range[1] and
+                self.CurrentAirSpeed <= self.MinClimbAirSpeed and
+                self.DesiredAltitude > self.CurrentAltitude):
+            # Change to Use airspeed to control pitch
+            asret = self.UpdateAirspeedPitch(ms)
+            crret = self.UpdateClimbratePitch(ms)
+            if asret < crret:
+                logger.debug ("Pitch chosen to preserve airspeed (%g) instead of climb rate (%g)",
+                    asret, crret)
+                ret = asret
             else:
-                ret = self.UpdateClimbratePitch(ms)
-        elif self._current_pitch_mode == "airspeed":
-            if self._throttle_control.GetCurrent() < self._throttle_range[1] or self.CurrentAirSpeed > self.MinClimbAirSpeed * 1.1 or self._desired_climb_rate < 0:
-                self.SelectClimbratePitch()
-                ret = self.UpdateClimbratePitch(ms)
-            else:
-                ret = self.UpdateAirspeedPitch(ms)
+                logger.debug ("Pitch chosen to preserve climb rate (%g) instead of air speed (%g)",
+                    crret, asret)
+                ret = crret
         else:
-            raise RuntimeError("invalid pitch mode")
+            self._airspeedPitchPID.SetMode (PID.MANUAL, self.CurrentAirSpeed, -self._desired_pitch)
+            ret = self.UpdateClimbratePitch(ms)
         return ret
 
-    def SelectAirspeedPitch(self):
-        if self._current_pitch_mode != "airspeed":
-            logger.debug("Switching to AirSpeed pitch control")
-            if self._current_pitch_mode == "climb":
-                # Turn off climb pitch PID
-                self._climbPitchController.SetMode (PID.MANUAL, self.CurrentClimbRate, self._desired_pitch)
-            # Turn on climb rate Pitch PID
-            if self._in_pid_optimization != "airspeed_pitch":
-                self._airspeedPitchPID.SetSetPoint (self.MinClimbAirSpeed)
-            self._airspeedPitchPID.SetMode (PID.AUTOMATIC, self.CurrentAirSpeed, -self._sensors.Pitch())
-            self._current_pitch_mode = "airspeed"
-
-    def SelectClimbratePitch(self):
-        if self._current_pitch_mode != "climb":
-            logger.debug("Switching to Climb rate pitch control")
-            if self._current_pitch_mode == "airspeed":
-                # Turn off airspeed pitch PID
-                self._airspeedPitchPID.SetMode (PID.MANUAL, self.CurrentClimbRate, self._desired_pitch)
-            # Turn on climb rate Pitch PID
-            self._climbPitchController.SetMode (PID.AUTOMATIC, self.CurrentClimbRate, self._sensors.Pitch())
-            self._current_pitch_mode = "climb"
-
     def UpdateAirspeedPitch(self, ms):
-        rmn,rmx = self._get_pitch_pid_limits(self.PitchPIDLimits, True)
-        self._airspeedPitchPID.SetOutputLimits(rmn, rmx)
+        if self._airspeedPitchPID.GetMode() != PID.AUTOMATIC:
+            self._airspeedPitchPID.SetMode (PID.AUTOMATIC,
+                                        self.CurrentAirSpeed, -self._desired_pitch)
+        self._set_pitch_pid_limits(self.PitchPIDLimits, self._airspeedPitchPID, True)
         desired_pitch = -self._airspeedPitchPID.Compute (self.CurrentAirSpeed, ms)
         if self._in_pid_optimization == "airspeed_pitch":
             self._pid_optimization_scoring.IncrementScore(self.CurrentAirSpeed, desired_pitch, self._pid_optimization_goal, self._journal_file)
@@ -211,12 +191,37 @@ class FlightControl(FileConfig.FileConfig):
         return desired_pitch
 
     def UpdateClimbratePitch(self, ms):
-        inputs = [self.CurrentClimbRate, self.CurrentAltitude, self.CurrentAirSpeed,
-                  self._sensors.Roll(), self._desired_climb_rate]
-        limits = self._get_pitch_pid_limits (self.PitchPIDLimits)
-        return self._climbPitchController.Compute (inputs, ms, self.PitchExperienceFile, limits)
+        alt_err = abs(self.DesiredAltitude - self.CurrentAltitude)
+        if alt_err < self.ClimbPitchCurve[0][0]:
+            if self._climbPitchPID.GetMode() != PID.AUTOMATIC:
+                self._climbPitchPID.SetMode (PID.AUTOMATIC,
+                                            self.CurrentClimbRate, self._desired_pitch)
+            self._set_pitch_pid_limits(self.PitchPIDLimits, self._climbPitchPID)
+            if self._in_pid_optimization != "climb_pitch":
+                self._climbPitchPID.SetSetPoint (self._desired_climb_rate)
+            desired_pitch = self._climbPitchPID.Compute (self.CurrentClimbRate, ms)
+            logger.log (10, "Climb Pitch PID: %g/%g-->%g",
+                    self.CurrentClimbRate, self._desired_climb_rate, desired_pitch)
+            if self._in_pid_optimization == "climb_pitch":
+                self._pid_optimization_scoring.IncrementScore(self.CurrentClimbRate, desired_pitch, self._pid_optimization_goal, self._journal_file)
+            if self._journal_file and self.JournalPitch:
+                self._journal_file.write(",%g,%g,%g"%(self._desired_climb_rate, self.CurrentClimbRate, desired_pitch))
+        else:
+            if self._climbPitchPID.GetMode() != PID.MANUAL:
+                self._climbPitchPID.SetMode (PID.MANUAL,
+                                            self.CurrentClimbRate, self._desired_pitch)
+            desired_pitch = util.rate_curve(alt_err, self.ClimbPitchCurve)
+            if self.DesiredAltitude < self.CurrentAltitude:
+                desired_pitch *= -1
+            mn,mx = self._find_pitch_limits(self.PitchPIDLimits)
+            if desired_pitch < mn:
+                desired_pitch = mn
+            elif desired_pitch > mx:
+                desired_pitch = mx
+            logger.log (10, "Climb Pitch Curve: %g-->%g", alt_err, desired_pitch)
+        return desired_pitch
 
-    def _get_pitch_pid_limits(self, absolute_limits, invert=False):
+    def _set_pitch_pid_limits(self, absolute_limits, pid, invert=False):
         amn,amx = self._find_pitch_limits(absolute_limits)
         if invert:
             multiplier = -1
@@ -234,7 +239,7 @@ class FlightControl(FileConfig.FileConfig):
         if rmn > rmx:
             rmn = rmx - 1.0
         logger.log (5, "pitch limits are %g,%g", rmn, rmx)
-        return (rmn, rmx)
+        pid.SetOutputLimits(rmn, rmx)
 
     def _find_pitch_limits(self, absolute_limits):
         if isinstance(absolute_limits,tuple):
@@ -245,7 +250,7 @@ class FlightControl(FileConfig.FileConfig):
 
     def Stop(self):
         self._throttlePID.SetMode (PID.MANUAL, self.CurrentAirSpeed, self._throttle_control.GetCurrent())
-        self._climbPitchController.SetMode (PID.MANUAL, self.CurrentAirSpeed, self._desired_pitch)
+        self._climbPitchPID.SetMode (PID.MANUAL, self.CurrentAirSpeed, self._desired_pitch)
         self._airspeedPitchPID.SetMode (PID.MANUAL, self.CurrentClimbRate, self.DesiredAirSpeed)
         self._attitude_control.StopFlight()
         if self._journal_file:
@@ -307,6 +312,7 @@ class FlightControl(FileConfig.FileConfig):
 
         self.CurrentAltitude = self._sensors.Altitude()
         self._desired_climb_rate = self.get_climb_rate()
+        logger.log(2, "Desired Climb Rate %g - %g ==> %g", self.DesiredAltitude, self.CurrentAltitude, self._desired_climb_rate)
 
         self.CurrentClimbRate = self._sensors.ClimbRate()
         self._desired_pitch = self.SetPitch(ms)
@@ -496,9 +502,8 @@ class FlightControl(FileConfig.FileConfig):
             self.JournalPitch = False
             self.JournalThrottle = False
             if self._in_pid_optimization == "climb_pitch":
-                # TODO: PID tuning unimplemented for controller complex
-                self._climbPitchController.SetTunings (params['P'], params['I'], params['D'])
-                self._climbPitchController.SetSetPoint (self._pid_optimization_goal)
+                self._climbPitchPID.SetTunings (params['P'], params['I'], params['D'])
+                self._climbPitchPID.SetSetPoint (self._pid_optimization_goal)
             elif self._in_pid_optimization == "airspeed_pitch":
                 self._airspeedPitchPID.SetTunings (params['P'], params['I'], params['D'])
                 self._airspeedPitchPID.SetSetPoint (self._pid_optimization_goal)
@@ -520,7 +525,7 @@ class FlightControl(FileConfig.FileConfig):
                 return self._pid_optimization_scoring.GetScore()
             self._pid_optimization_goal = step.input_value
             if self._in_pid_optimization == "climb_pitch":
-                self._climbPitchController.SetSetPoint (self._pid_optimization_goal)
+                self._climbPitchPID.SetSetPoint (self._pid_optimization_goal)
             elif self._in_pid_optimization == "airspeed_pitch":
                 self._airspeedPitchPID.SetSetPoint (self._pid_optimization_goal)
             elif self._in_pid_optimization == "throttle":
@@ -532,7 +537,7 @@ class FlightControl(FileConfig.FileConfig):
     def PIDOptimizationStop(self):
         if self._in_pid_optimization == "climb_pitch":
             kp,ki,kd = self.ClimbPitchPIDTuningParams
-            self._climbPitchController.SetTunings (kp,ki,kd)
+            self._climbPitchPID.SetTunings (kp,ki,kd)
         elif self._in_pid_optimization == "airspeed_pitch":
             kp,ki,kd = self.AirspeedPitchPIDTuningParams
             self._airspeedPitchPID.SetTunings (kp,ki,kd)

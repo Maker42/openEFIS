@@ -27,30 +27,22 @@ from FuzzyController import MeasuredRule
 
 rules = dict()
 
-def GetBinNumber(inp, inc, digits):
+def GetBinNumber(inp, inc):
     ret = inp / inc
-    if digits < 0:
-        mult = pow(10,digits)
-        ret *= mult
-        ret = round(ret)
-        ret /= mult
-    else:
-        ret = round(ret,digits)
+    ret = int(round(ret))
     return str(ret)
 
-def GetBinID(rule, cell_size, bindigits):
+def GetBinID(rule, cell_size):
     if len(cell_size) != len(rule.InputCenters):
         raise RuntimeError ("cell size list does not have the same size as inputs")
-    if len(cell_size) != len(bindigits):
-        raise RuntimeError ("cell size list does not have the same size as bindigits")
-    bnn = GetBinNumber (rule.InputCenters[0], cell_size[0], bindigits[0])
+    bnn = GetBinNumber (rule.InputCenters[0], cell_size[0])
     for index in range(1,len(cell_size)):
         bnn += '_'
-        bnn += GetBinNumber(rule.InputCenters[index], cell_size[index], bindigits[index])
+        bnn += GetBinNumber(rule.InputCenters[index], cell_size[index])
     return bnn
 
-def AddRule(rule, cell_size, bindigits):
-    bnn = GetBinID(rule, cell_size, bindigits)
+def AddRule(rule, cell_size):
+    bnn = GetBinID(rule, cell_size)
     if rules.has_key(bnn):
         rules[bnn].append(rule)
     else:
@@ -64,7 +56,7 @@ def FillBuffer(lines, f):
         nlines -= 1
 
 
-def ReadRules(filename, cell_size, bindigits):
+def ReadRules(filename, cell_size):
     f = open(filename, 'r')
     lines = list()
     while True:
@@ -80,7 +72,7 @@ def ReadRules(filename, cell_size, bindigits):
             break
         del lines[0]
         rule.initialize(list(), lines)
-        AddRule (rule, cell_size, bindigits)
+        AddRule (rule, cell_size)
     f.close()
 
 def ConsolidateRules():
@@ -106,19 +98,19 @@ def ConsolidateRules():
     return consolidated_rules
 
 def WriteRules(crules, filename):
+    print ("Writing out %d rules"%len(crules))
     f = open(filename, 'w')
     f.write ("MeasuredRules\n")
     for v in crules.itervalues():
         v.Record (f)
     f.close()
 
-if len(sys.argv) < 5:
-    print ("Usage: ExperienceConsolidation.py experience_file consolidated_file cell_sizes bindigits")
+if len(sys.argv) < 4:
+    print ("Usage: ExperienceConsolidation.py experience_file consolidated_file cell_sizes")
     sys.exit(-1)
 
 cell_sizes=eval(sys.argv[3])
-bindigits=eval(sys.argv[4])
 
-ReadRules(sys.argv[1], cell_sizes, bindigits)
+ReadRules(sys.argv[1], cell_sizes)
 crules = ConsolidateRules()
 WriteRules(crules, sys.argv[2])

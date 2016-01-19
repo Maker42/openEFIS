@@ -28,7 +28,6 @@ for p in sys.path:
 else:
     sys.path.append (os.path.join ('Common'))
     sys.path.append (os.path.join ('Test'))
-    sys.path.append (os.path.join ('Fuzzy'))
 
 
 if '__main__' == __name__:
