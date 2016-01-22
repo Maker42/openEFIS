@@ -19,6 +19,9 @@ control = None
 
 logger=logging.getLogger(__name__)
 
+SECONDS_HOUR = 3600.0
+NM_METER = .00053996
+
 class XplaneControl:
     def __init__(self, localportno, xplane_host, xplane_port):
         global control
@@ -208,7 +211,7 @@ class XplaneSensors:
     def GroundSpeed(self):
         self.ProcessIncoming()
         assert(self.sensor_suite[8][1] == "GroundSpeed")
-        return self.sensor_suite[8][0]
+        return self.sensor_suite[8][0] * SECONDS_HOUR * NM_METER
 
     def ClimbRate(self):
         self.ProcessIncoming()
@@ -264,6 +267,12 @@ class XplaneSensors:
 
     def OuterEnginePosition(self):
         return "vertical"
+
+    def Snapshot(self):
+        ret = dict()
+        for s in self.sensor_suite:
+            ret[s[1]] = s[0]
+        return str(ret)
 
     def ProcessIncoming(self):
         global control

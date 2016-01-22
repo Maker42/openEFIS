@@ -276,10 +276,9 @@ class Airplane(FileConfig.FileConfig):
         self._flight_control.FollowCourse(self.DesiredCourse, self.DesiredAltitude)
         return ret
 
-    def Swoop(self, low_alt, high_alt, min_airspeed = 0, course = None):
-        if not course:
-            course = self.DesiredCourse
-        self._flight_control.Swoop(course, low_alt, high_alt)
+    def Swoop(self, low_alt, high_alt, min_airspeed = 0):
+        self._flight_control.Swoop(low_alt, high_alt, min_airspeed)
+        return "Swooping down to %g and back to %g"%(low_alt, high_alt)
 
     def FlyCourse(self, course, desired_altitude=0, desired_airspeed=0):
         assert (self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN)
@@ -350,6 +349,9 @@ class Airplane(FileConfig.FileConfig):
         self._flight_control.StraightAndLevel(desired_altitude, desired_airspeed, desired_heading)
         return ret
 
+    def SensorSnapshot(self):
+        return self._sensors.Snapshot()
+
     # Inputs specify touchdown point and (exact) heading and altitude of runway
     def Land(self, touchdown=None, length=0, heading=-1, end=None, runway_altitude=None):
         if (self.CurrentFlightMode == Globals.FLIGHT_MODE_GROUND):
@@ -369,6 +371,15 @@ class Airplane(FileConfig.FileConfig):
             self.ChangeMode (Globals.FLIGHT_MODE_LANDING)
             self.DesiredCourse = self.ApproachEndpoints
             self._landing_control.Land(self.DesiredCourse, self.RunwayAltitude)
+
+    def PickupFromPlan(self, step_number):
+        if step_number < 0:
+            ret = "Invalid step number %d"%step_number
+        elif step_number >= len(self.FlightPlan):
+            ret = "Invalid step number %d (max %d)"%(step_number, len(self.FlightPlan)-1)
+        else:
+            self._flight_plan_index = step_number -1
+            self.SendNextCommand()
 
     def Update(self):
         if self.has_crashed():

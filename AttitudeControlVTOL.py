@@ -280,6 +280,9 @@ class AttitudeControlVTOL(FileConfig.FileConfig):
 
     def ForceThrottleDown (self):
         self._baseline_offset -= self.ThrottleDownIncrement
+        # Allow engine balancing to continue all the way until all engines are produce no
+        # power by forcing a greater degree of attitude PID limits
+        self.AttitudePIDLimits = (-1.0,1.0)
         if self._baseline_offset <= -1.0:
             return True
         else:

@@ -136,6 +136,8 @@ class LandingControlVTOL(FileConfig.FileConfig):
                 logger.debug("Entering touchdown mode")
         elif self._flight_mode == SUBMODE_TOUCHDOWN:
             self._desired_climb_rate = -20.0
+            self._desired_pitch = 0
+            self._desired_roll = 0
             if self._attitude_control.ForceThrottleDown():
                 self.get_next_directive()
         elif self._flight_mode == SUBMODE_TRANSITION_PRIME:

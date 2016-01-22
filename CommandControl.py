@@ -63,19 +63,21 @@ class command_request_handler(asyncore.dispatcher_with_send):
                     command = rec
                 if command == 'reset':
                     self._command_queue = list()
+                feedback = None
                 if immediate:
                     try:
-                        print ("Executing command %s"%command)
                         feedback = eval("Globals.TheAircraft." + command)
                         if not feedback:
                             feedback = "No feedback."
-                        self.send ("Command executed. %s\n"%feedback)
+                        feedback = "Command executed: %s"%feedback
                     except Exception,e:
-                        err = "Error (%s) executing command: %s"%(str(e), command)
-                        self.send (err + "\n")
-                        logger.error (err)
+                        feedback = "Error (%s) executing command: %s"%(str(e), command)
+                        logger.error (feedback)
                 else:
+                    feedback = "Command queued: %s"%command
                     self._command_queue.append(command)
+                logger.info (feedback)
+                self.send (feedback + '\n')
 
 
 class CommandServer(asyncore.dispatcher):
@@ -123,10 +125,15 @@ if '__main__' == __name__:
     client_sock.connect ((args.server_address, args.server_port))
     client_sock.send (args.command)
     client_sock.settimeout(1.0)
-    try:
-        feedback = client_sock.recv(1024)
-        print ("Sent command. Got: %s"%feedback)
-    except:
-        print ("Sent command. No feedback received")
+    feedback = ''
+    while True:
+        try:
+            feedback += client_sock.recv(2048)
+            client_sock.settimeout(0.3)
+        except:
+            break
+    if len(feedback) == 0:
+        feedback = 'Nothing'
+    print ("Sent command. Got: %s"%feedback)
     client_sock.close()
 

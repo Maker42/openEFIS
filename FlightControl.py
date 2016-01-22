@@ -56,6 +56,7 @@ class FlightControl(FileConfig.FileConfig):
         self._desired_heading = 0
         self._desired_roll = 0
         self._desired_pitch = 0
+        self._last_pitch = 0
 
         self._flight_mode = SUBMODE_COURSE
         self._callback = callback
@@ -65,7 +66,6 @@ class FlightControl(FileConfig.FileConfig):
         # Configuration properties
         self.AltitudeAchievementMinutes = 1.2
         self.ClimbRateLimits = (-1000.0, 1000.0)        # feet / minute
-        self.SwoopClimbRateLimits = (-5000.0, 5000.0)   # feet / minute
         self.PitchPIDLimits = [(0,20.0), (45,0)]  # (roll, max degrees)
 
         self.PitchPIDSampleTime = 1000
@@ -84,8 +84,9 @@ class FlightControl(FileConfig.FileConfig):
         self.ClimbRateCurve = None
 
         self.ClimbPitchCurve = None
-        self.ClimbPitchCurveMaxPerformance = None
-        self.ClimbPitchCurveCruise = None
+        self.SwoopPitch = 20.0
+        self.SwoopMaxAirSpeed = 200.0
+        self.SwoopAltitudeReversal = 200
 
         # Will Use one of the following 2 PIDS to request pitch angle:
         # Input: Current Climb Rate; SetPoint: Desired Climb Rate; Output: Desired Pitch Attitude
@@ -105,8 +106,8 @@ class FlightControl(FileConfig.FileConfig):
     def initialize(self, filelines):
         self.InitializeFromFileLines(filelines)
         ms = util.millis(self._sensors.Time())
+        self._last_update_time = ms
 
-        self.ClimbPitchCurve = self.ClimbPitchCurveCruise
 
         kp,ki,kd = self.ClimbPitchPIDTuningParams
         self._climbPitchPID = PID.PID(0, kp, ki, kd, PID.DIRECT, ms)
@@ -145,6 +146,7 @@ class FlightControl(FileConfig.FileConfig):
         self.CurrentClimbRate = self._sensors.ClimbRate()
 
         self._desired_pitch = last_desired_pitch
+        self._last_pitch = self._sensors.Pitch()
 
         self._attitude_control.StartFlight()
         if self.JournalFileName and (not self._journal_file):
@@ -261,6 +263,7 @@ class FlightControl(FileConfig.FileConfig):
         ms = util.millis(self._sensors.Time())
         self.CurrentAirSpeed = self._sensors.AirSpeed()
         self.CurrentTrueHeading = self._sensors.TrueHeading()
+        self.CurrentAltitude = self._sensors.Altitude()
         if self._flight_mode == SUBMODE_TURN:
             self._desired_roll = self.compute_roll(self.DesiredTrueHeading)
             if self.completed_turn():
@@ -269,30 +272,35 @@ class FlightControl(FileConfig.FileConfig):
         else:
             self.CurrentPosition = self._sensors.Position()
             if self._flight_mode == SUBMODE_SWOOP_DOWN:
-                if self.completed_course():
+                roll = 0
+                if self.CurrentAltitude < self.DesiredAltitude + self.SwoopAltitudeReversal:
                     self._flight_mode = SUBMODE_SWOOP_UP
-                    self.DesiredAirSpeed = self._swoop_min_as
+                    self._desired_pitch = self.SwoopPitch
                     self.DesiredAltitude = self._swoop_high_alt
-                elif self.CurrentAirSpeed > self.DesiredAirSpeed:
+                    self._throttle_control.Set (.75)
+                    self._throttlePID.SetMode (PID.MANUAL, self.CurrentAirSpeed,
+                            self._throttle_control.GetCurrent())
+                elif self.CurrentAirSpeed > self.SwoopMaxAirSpeed:
                     # Going too fast. Better throttle down
                     self._throttlePID.SetMode (PID.AUTOMATIC, self.CurrentAirSpeed,
                             self._throttle_control.GetCurrent())
-            else:
-                if self._flight_mode != SUBMODE_STRAIGHT and self.completed_course():
-                    if self._flight_mode == SUBMODE_SWOOP_UP:
-                        # Finished a swoop up. Restore full automatic PID operation and limits
-                        self._throttlePID.SetMode (PID.AUTOMATIC, self.CurrentAirSpeed,
-                                self._throttle_control.GetCurrent())
-                    self.get_next_directive()
-                    return
-                if self._flight_mode == SUBMODE_SWOOP_UP and self.CurrentAirSpeed < self.DesiredAirSpeed:
-                    # Going too slow on a swoop up. Have to increase throttle
+                    self.DesiredAirSpeed = self.SwoopMaxAirSpeed
+            elif self._flight_mode == SUBMODE_SWOOP_UP:
+                roll = 0
+                if self.CurrentAltitude > self.DesiredAltitude - self.SwoopAltitudeReversal:
                     self._throttlePID.SetMode (PID.AUTOMATIC, self.CurrentAirSpeed,
                             self._throttle_control.GetCurrent())
-
-            if self._flight_mode != SUBMODE_COURSE:
+                    self._flight_mode = self._mode_before_swoop
+                    self.DesiredAirSpeed = self._airspeed_before_swoop
+                elif self.CurrentAirSpeed < self._swoop_min_as:
+                    self._throttle_control.Set(1.0)
+                    self._desired_pitch = self.SwoopPitch / 2.0
+            elif self._flight_mode != SUBMODE_COURSE:
                 roll = self.compute_roll(self.DesiredTrueHeading)
             else:
+                if self._flight_mode == SUBMODE_COURSE and self.completed_course():
+                    self.get_next_directive()
+                    return
                 roll = self.compute_roll_from_course()
             if abs(roll) > self.MaxRoll:
                 roll = self.MaxRoll if roll > 0 else -self.MaxRoll
@@ -304,18 +312,18 @@ class FlightControl(FileConfig.FileConfig):
             if self._pid_optimization_goal != "throttle":
                 self._throttlePID.SetSetPoint (self.DesiredAirSpeed)
             th = self._throttlePID.Compute (self.CurrentAirSpeed, ms)
-        if self._in_pid_optimization == "throttle":
-            self._pid_optimization_scoring.IncrementScore(self.CurrentAirSpeed, th, self._pid_optimization_goal, self._journal_file)
-        if self._journal_file and self.JournalThrottle:
-            self._journal_file.write(",%g,%g,%g"%(self.DesiredAirSpeed, self.CurrentAirSpeed, th))
-        self._throttle_control.Set(th)
+            if self._in_pid_optimization == "throttle":
+                self._pid_optimization_scoring.IncrementScore(self.CurrentAirSpeed, th, self._pid_optimization_goal, self._journal_file)
+            if self._journal_file and self.JournalThrottle:
+                self._journal_file.write(",%g,%g,%g"%(self.DesiredAirSpeed, self.CurrentAirSpeed, th))
+            self._throttle_control.Set(th)
 
-        self.CurrentAltitude = self._sensors.Altitude()
         self._desired_climb_rate = self.get_climb_rate()
         logger.log(2, "Desired Climb Rate %g - %g ==> %g", self.DesiredAltitude, self.CurrentAltitude, self._desired_climb_rate)
 
-        self.CurrentClimbRate = self._sensors.ClimbRate()
-        self._desired_pitch = self.SetPitch(ms)
+        if self._flight_mode != SUBMODE_SWOOP_DOWN and self._flight_mode != SUBMODE_SWOOP_UP:
+            self.CurrentClimbRate = self._sensors.ClimbRate()
+            self._desired_pitch = self.SetPitch(ms)
 
         if self._journal_file:
             self._journal_file.write("\n")
@@ -324,7 +332,15 @@ class FlightControl(FileConfig.FileConfig):
                 self._journal_file.flush()
                 self._journal_flush_count = 0
 
-        self._attitude_control.UpdateControls (self._desired_pitch, self._desired_roll, 0)
+        pitch_diff = self._desired_pitch - self._last_pitch
+        time_diff = ms - self._last_update_time
+        if abs(pitch_diff) > self.MaxPitchChangePerSample * time_diff / self.PitchPIDSampleTime:
+            pitch_diff = self.MaxPitchChangePerSample * time_diff / self.PitchPIDSampleTime
+            if self._desired_pitch < self._last_pitch:
+                pitch_diff *= -1
+            self._last_pitch += pitch_diff
+        self._attitude_control.UpdateControls (self._last_pitch, self._desired_roll, 0)
+        self._last_update_time = ms
 
     def get_climb_rate(self):
         altitude_error = self.DesiredAltitude - self.CurrentAltitude
@@ -333,10 +349,7 @@ class FlightControl(FileConfig.FileConfig):
             logger.log (5, "Climb rate curve %g ==> %g", altitude_error, ret)
         else:
             climb_rate = altitude_error / self.AltitudeAchievementMinutes
-            if self._flight_mode == SUBMODE_SWOOP_DOWN:
-                limits = self.SwoopClimbRateLimits
-            else:
-                limits = self.ClimbRateLimits
+            limits = self.ClimbRateLimits
             if climb_rate < limits[0]:
                 climb_rate = limits[0]
             elif climb_rate > limits[1]:
@@ -434,30 +447,27 @@ class FlightControl(FileConfig.FileConfig):
         self.DesiredTrueHeading = turn_start + degrees
         logger.debug("starting turn at %g", turn_start)
 
-    def Swoop(self, course, low_alt, high_alt, min_airspeed=0):
+    def Swoop(self, low_alt, high_alt, min_airspeed=0):
         current_altitude = self._sensors.Altitude()
         if current_altitude <= low_alt:
-            self._flight_mode = SUBMODE_COURSE
             self.DesiredAltitude = high_alt
-            self.DesiredCourse = course
-            self.DesiredAirSpeed = min_airspeed
         else:
+            self._mode_before_swoop = self._flight_mode 
+            self._airspeed_before_swoop = self.DesiredAirSpeed 
             self._flight_mode = SUBMODE_SWOOP_DOWN
+            self._desired_pitch = -self.SwoopPitch
             # set altitude PID limits and desired speed higher for a swoop
             self.DesiredAirSpeed = self._callback.MaxAirSpeed
             # use a constant throttle setting to start
             self._throttlePID.SetMode (PID.MANUAL, self.CurrentAirSpeed, self._throttle_control.GetCurrent())
             self._throttle_control.Set (.75)
 
-            self.DesiredCourse = course
-            self.DesiredCourse, self._swoop_up_course = self.divide_swoop(course, low_alt,
-                                                high_alt, current_altitude)
             self._swoop_high_alt = high_alt
-            if min_airspeed > self.MinClimbAirSpeed:
-                self._swoop_min_as = min_airspeed
-            else:
-                self._swoop_min_as = self.MinClimbAirSpeed
             self.DesiredAltitude = low_alt
+        if min_airspeed > self.MinClimbAirSpeed:
+            self._swoop_min_as = min_airspeed
+        else:
+            self._swoop_min_as = self.MinClimbAirSpeed
 
     def FlyTo(self, coordinate, desired_altitude=0, desired_airspeed=0):
         self.DesiredCourse = [self._sensors.Position(), coordinate]

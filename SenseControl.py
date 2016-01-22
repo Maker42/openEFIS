@@ -194,6 +194,9 @@ class Sensors:
     def Battery(self):
         return 100
 
+    def Snapshot(self):
+        return str(scmaster.Sensors)
+
 def look_up(keyin, lookup_table, continuous=False, reverse=False):
     last_keypoint = None
     last_val = None
