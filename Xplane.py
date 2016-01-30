@@ -146,6 +146,12 @@ class XplaneSensors:
                 (0, "WindSpeed", b"sim/weather/wind_speed_kt[0]"),
                 (0, "WindDirection", b"sim/weather/wind_direction_degt[0]"),
                 (0, "AGL", b"sim/flightmodel/position/y_agl"),
+                (0, "EngineFail0", b"sim/operation/failures/rel_engfai0"),
+                (0, "EngineFail1", b"sim/operation/failures/rel_engfai1"),
+                (0, "EngineFail2", b"sim/operation/failures/rel_engfai2"),
+                (0, "EngineFail3", b"sim/operation/failures/rel_engfai3"),
+                (0, "EngineFail4", b"sim/operation/failures/rel_engfai4"),
+                (0, "EngineFail5", b"sim/operation/failures/rel_engfai5"),
                 ]
         self.previous_readings = [s[0] for s in self.sensor_suite]
         self.SamplesPerSecond = 10
@@ -266,7 +272,13 @@ class XplaneSensors:
         return (self.sensor_suite[18][0])
 
     def OuterEnginePosition(self):
-        return "vertical"
+        self.ProcessIncoming()
+        assert(self.sensor_suite[19][1] == "EngineFail0")
+        ret = 0
+        for i in range(19,25):
+            if self.sensor_suite[i][0] != 0:
+                ret += 1
+        return ret
 
     def Snapshot(self):
         ret = dict()
@@ -285,6 +297,9 @@ class XplaneSensors:
 
     def Battery(self):
         return 100
+
+    def EnginesOut(self):
+        return 0
 
     def _parse_input(self, rec):
         DREF_SIZE=8

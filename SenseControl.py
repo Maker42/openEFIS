@@ -194,6 +194,9 @@ class Sensors:
     def Battery(self):
         return 100
 
+    def EnginesOut(self):
+        return 0
+
     def Snapshot(self):
         return str(scmaster.Sensors)
 
