@@ -26,7 +26,7 @@ class SolenoidControl:
 
     def SetServoController(self, sc):
         self._controller = sc
-        #self._controller.SetDigitalChannel(self.pin, self._current_val)
+        #self._controller.SetDigitalChannel(self._channel, self._current_val)
 
     def GetCurrent(self):
         return self._current_val

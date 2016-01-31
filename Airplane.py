@@ -1,4 +1,4 @@
-# Copyright (C) 2015  Garrett Herschleb
+# Copyright (C) 2015-2016  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -21,6 +21,7 @@ import SenseControl, CommandControl
 import Xplane, SurfaceControl, AttitudeControl, FlightControl, AttitudeControlVTOL
 import TakeoffControlVTOL, LandingControlVTOL, AttitudeVTOLEstimation
 import MiddleEngineTiltControl, VTOLYawControl, SolenoidControl, ThrottleControl
+import TakeoffControl
 import Spatial
 import UnitTestFixture
 
@@ -30,7 +31,7 @@ class Airplane(FileConfig.FileConfig):
     def __init__(self):
         # Airplane parameters:
         self.MaxAirSpeed = 10       # nautical miles per Hour
-        self.StallSpeed = 3         # KPH
+        self.StallSpeed = 90.0      # Knots
         self.GroundEffectHeight = 15.0
 
         # Operating parameters:
@@ -57,6 +58,8 @@ class Airplane(FileConfig.FileConfig):
         self._elevator_control = None
         self._rudder_control = None
         self._throttle_control = None
+        self._gear_control = None
+        self._flap_control = None
         self._yawvtol_control = None
         self._middle_engine_tilt_control = None
         self._VTOL_engine_release_control = None
@@ -88,6 +91,8 @@ class Airplane(FileConfig.FileConfig):
                 "ThrottleControl" : self.init_throttle_control,
                 "AileronControl" : self.init_aileron_control,
                 "ElevatorControl" : self.init_elevator_control,
+                "GearControl" : self.init_gear_control,
+                "FlapControl" : self.init_flap_control,
                 "Sensors" : self.init_sensors,
                 "ServoControl" : self.init_servo_control,
                 "CommandControl" : self.init_command_control,
@@ -123,6 +128,10 @@ class Airplane(FileConfig.FileConfig):
             self._VTOL_engine_release_control.SetServoController(self._servo_controller)
         if self._forward_engine_release_control:
             self._forward_engine_release_control.SetServoController(self._servo_controller)
+        if self._gear_control:
+            self._gear_control.SetServoController(self._servo_controller)
+        if self._flap_control:
+            self._flap_control.SetServoController(self._servo_controller)
         self.ComputeRunwayEndpoints()
         Globals.TheAircraft = self
 
@@ -179,9 +188,9 @@ class Airplane(FileConfig.FileConfig):
                     self._middle_engine_tilt_control, self._VTOL_engine_release_control,
                     self._sensors, self._attitude_vtol_estimation, self)
         else:
-            self._takeoff_control = TakeoffControl.TakeoffControl(self._aileron_control,
-                    self._rudder_control, self._elevator_control,
-                    self._throttle_control, self._sensors, self)
+            self._takeoff_control = TakeoffControl.TakeoffControl(self._attitude_control,
+                    self._throttle_control, self._rudder_control, self._gear_control,
+                    self._flap_control, self._sensors, self)
         self._takeoff_control.initialize(filelines)
 
     def init_landing_control(self, args, filelines):
@@ -223,6 +232,12 @@ class Airplane(FileConfig.FileConfig):
     def init_elevator_control(self, args, filelines):
         self._elevator_control = eval(' '.join(args[1:]))
 
+    def init_gear_control(self, args, filelines):
+        self._gear_control = eval(' '.join(args[1:]))
+
+    def init_flap_control(self, args, filelines):
+        self._flap_control = eval(' '.join(args[1:]))
+
     def init_command_control(self, args, filelines):
         self._command_control = eval(' '.join(args[1:]))
         self._command_control.initialize(filelines)
@@ -255,11 +270,28 @@ class Airplane(FileConfig.FileConfig):
         self._ground_control.Taxi(self.DesiredCourse)
 
     # Inputs specify end of runway
-    def Takeoff(self, runway_endpoints):
+    def Takeoff(self, length=0, heading=-1, end=None, soft_field=False):
         assert (self.CurrentFlightMode == Globals.FLIGHT_MODE_GROUND)
+        self.RunwayTouchdownPoint = self._sensors.Position()
+        if end:
+            self.ApproachEndpoints = [self.RunwayTouchdownPoint, end]
+        else:
+            self.ApproachEndpoints = list()
+        if length:
+            self.RunwayLength = length
+        if heading >= 0:
+            self.RunwayHeading = heading
+        else:
+            self.RunwayHeading = self._sensors.TrueHeading()
+        self.RunwayAltitude = self._sensors.Altitude()
+        self.ComputeRunwayEndpoints()
         self.ChangeMode(Globals.FLIGHT_MODE_TAKEOFF)
-        self.DesiredCourse = runway_endpoints
-        self._takeoff_control.Takeoff (runway_endpoints)
+        self.DesiredCourse = self.ApproachEndpoints
+        self._takeoff_control.Takeoff (self.ApproachEndpoints, soft_field)
+        if soft_field:
+            self._elevator_control.Set(.7)
+        else:
+            self._elevator_control.Set(-.05)
 
     def NextWayPoint(self, next_waypoint, desired_altitude=0, desired_airspeed=0):
         assert (self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN)
@@ -371,6 +403,9 @@ class Airplane(FileConfig.FileConfig):
             self.ChangeMode (Globals.FLIGHT_MODE_LANDING)
             self.DesiredCourse = self.ApproachEndpoints
             self._landing_control.Land(self.DesiredCourse, self.RunwayAltitude)
+    
+    def CompleteRunway(self):
+        self.FlyCourse(self.ApproachEndpoints, self.RunwayAltitude+1000)
 
     def PickupFromPlan(self, step_number):
         if step_number < 0:
@@ -521,7 +556,8 @@ class Airplane(FileConfig.FileConfig):
     def DispatchCommand(self, command):
         nonblocking_commands = ["ChangeAltitude"]
         blocking_commands = ["Turn", "NextWayPoint", "Taxi", "Takeoff", "FlyTo", "Land", 
-                "PIDOptimizationStart", "PIDOptimizationNext", "StraightAndLevel", "FlyCourse"]
+                "PIDOptimizationStart", "PIDOptimizationNext", "StraightAndLevel", "FlyCourse",
+                "CompleteRunway"]
         logger.info ("Executing command %s", command)
         for c in nonblocking_commands:
             if command.startswith (c):

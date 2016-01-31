@@ -21,6 +21,7 @@ logger=logging.getLogger(__name__)
 
 SECONDS_HOUR = 3600.0
 NM_METER = .00053996
+FEET_METER = 1.0/.3048
 
 class XplaneControl:
     def __init__(self, localportno, xplane_host, xplane_port):
@@ -40,6 +41,9 @@ class XplaneControl:
                 (b"sim/joystick/yoke_roll_ratio", "YokeRoll", (-1.0, 1.0)),  #	The deflection of the joystick axis controlling roll. Use override_joystick or override_joystick_roll
                 (b"sim/joystick/yoke_heading_ratio", "Yaw", (-1.0, 1.0)),   #	The deflection of the joystick axis controlling yaw. Use override_joystick or override_joystick_heading
                 (b"sim/flightmodel/engine/ENGN_thro_override", "Throttle", (0.0, 1.0)),  #	y	ratio	Throttle (per engine) as set by user, 0 = idle, 1 = max
+                (b"sim/cockpit2/controls/gear_handle_down", "Gear", (0.0, 1.0)),
+                (b"sim/flightmodel/controls/flaprqst", "Flaps", (0.0, 1.0)),
+                (b"sim/flightmodel/controls/parkbrake", "ParkingBrake", (0,0, 1.0)),
                 ]
         self.dref_struct_preamble = struct.pack("5s", b"DREF")
         self.dref_struct_body = struct.Struct("f500s")
@@ -53,6 +57,9 @@ class XplaneControl:
 
         override_throttle = self.dref_struct_preamble + self.dref_struct_body.pack(1.0, b"sim/operation/override/override_throttles")
         self.sock.sendto (override_throttle, (self.xplane_host, self.xplane_port))
+
+        override_gearbrake = self.dref_struct_preamble + self.dref_struct_body.pack(1.0, b"sim/operation/override/override_gearbrake")
+        self.sock.sendto (override_gearbrake, (self.xplane_host, self.xplane_port))
 
         set_zero = [
                         b"sim/joystick/joystick_pitch_nullzone",
@@ -90,11 +97,27 @@ class XplaneControl:
                 raise RuntimeError ("Invalid channel set (%d)"%channel)
             channel_range = self.controls[channel][2]
             channel_range_size = abs(channel_range[1] - channel_range[0])
-            scaled_value = (val - self.ServoRange[0]) * channel_range_size / self.servo_range_size + channel_range[0]
+            if self.controls[channel][2][0] == 0.0:
+                scaled_value = val
+            else:
+                scaled_value = (val - self.ServoRange[0]) * channel_range_size / self.servo_range_size + channel_range[0]
             logger.log (3, "Setting channel %s to %g (%g)", self.controls[channel][1], val, scaled_value)
             #print ("Setting channel %s = %g (%g)"%(self.controls[channel][1], val, scaled_value))
             try:
                 cmd = self.dref_struct_preamble + self.dref_struct_body.pack(scaled_value, self.controls[channel][0])
+                control.sock.sendto(cmd, (self.xplane_host, self.xplane_port))
+                break
+            except:
+                time.sleep(.01)
+
+    def SetDigitalChannel(self, channel, val):
+        for retry in range(5):
+            if channel < 0 or channel >= len(self.controls):
+                raise RuntimeError ("Invalid channel set (%d)"%channel)
+            logger.log (3, "Setting digital channel %s to %g", self.controls[channel][1], val)
+            #print ("Setting channel %s = %g (%g)"%(self.controls[channel][1], val, scaled_value))
+            try:
+                cmd = self.dref_struct_preamble + self.dref_struct_body.pack(val, self.controls[channel][0])
                 control.sock.sendto(cmd, (self.xplane_host, self.xplane_port))
                 break
             except:
@@ -154,6 +177,7 @@ class XplaneSensors:
                 (0, "EngineFail5", b"sim/operation/failures/rel_engfai5"),
                 ]
         self.previous_readings = [s[0] for s in self.sensor_suite]
+        self._history_count = 0
         self.SamplesPerSecond = 10
         self.dref_rcv_struct = struct.Struct("If")
         self.preamble_struct = struct.Struct("5s")
@@ -233,7 +257,10 @@ class XplaneSensors:
     def HeadingRateChange(self):
         self.ProcessIncoming()
         assert(self.sensor_suite[1][1] == "Heading")
-        return ((self.sensor_suite[1][0] - self.previous_readings[1]) * self.SamplesPerSecond)
+        if self._history_count < 3:
+            return 0
+        else:
+            return ((self.sensor_suite[1][0] - self.previous_readings[1]) * self.SamplesPerSecond)
 
     def TrueHeading(self):
         self.ProcessIncoming()
@@ -269,7 +296,13 @@ class XplaneSensors:
     def AGL(self):
         self.ProcessIncoming()
         assert(self.sensor_suite[18][1] == "AGL")
-        return (self.sensor_suite[18][0])
+        return (self.sensor_suite[18][0] * FEET_METER)
+
+    def GearUpLocked(self):
+        return True
+
+    def FlapPosition(self):
+        return 0.0
 
     def OuterEnginePosition(self):
         self.ProcessIncoming()
@@ -318,6 +351,7 @@ class XplaneSensors:
                     #print ("Xplane reading[%s] = %g"%(self.sensor_suite[index][1], val))
                 else:
                     logger.warning("Got input from X-Plane in index %d", index)
+            self._history_count += 1
         elif header == "DATA" or header == b"DATA":
             rec = rec[5:]
             index,v1,v2,v3,v4,v5,v6,v7,v8 = self.data_struct_body.unpack(rec)

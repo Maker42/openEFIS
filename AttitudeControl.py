@@ -211,14 +211,15 @@ class AttitudeControl(FileConfig.FileConfig):
         if self._journal_file and self.JournalPitch:
             self._journal_file.write(",%g,%g,%g"%(desired_pitch, self.CurrentPitch, elevator_value))
 
-        if self._in_pid_optimization != "yaw":
-            self._yawPID.SetSetPoint (self.DesiredYaw)
-        rudder_value = self._yawPID.Compute(self.CurrentYaw, ms)
-        self._rudder_control.Set (rudder_value + self.rudder_offset())
-        if self._in_pid_optimization == "yaw":
-            self._pid_optimization_scoring.IncrementScore(self.CurrentYaw, rudder_value, self._pid_optimization_goal, self._journal_file)
-        if self._journal_file and self.JournalRoll:
-            self._journal_file.write(",%g,%g,%g"%(self.DesiredYaw, self.CurrentYaw, rudder_value))
+        if self.DesiredYaw != None:
+            if self._in_pid_optimization != "yaw":
+                self._yawPID.SetSetPoint (self.DesiredYaw)
+            rudder_value = self._yawPID.Compute(self.CurrentYaw, ms)
+            self._rudder_control.Set (rudder_value + self.rudder_offset())
+            if self._in_pid_optimization == "yaw":
+                self._pid_optimization_scoring.IncrementScore(self.CurrentYaw, rudder_value, self._pid_optimization_goal, self._journal_file)
+            if self._journal_file and self.JournalRoll:
+                self._journal_file.write(",%g,%g,%g"%(self.DesiredYaw, self.CurrentYaw, rudder_value))
         if self._journal_file and (not self._in_pid_optimization):
             self._journal_file.write("\n")
             self._journal_flush_count += 1

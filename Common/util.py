@@ -74,7 +74,7 @@ def GetRelLng(lat1):
 def GetAdjustedPolarDeltas(course, rel_lng=0):
     dlng,dlat = get_polar_deltas(course)
     if rel_lng == 0:
-        rel_lng = GetRelLng(course[0][1])
+        rel_lng = GetRelLng(course[0][1] * RAD_DEG)
     return (dlng*rel_lng, dlat)
 
 # Computes true heading from a given course
@@ -151,12 +151,11 @@ def log_occasional_info(source, string, frequency=10):
     global log_sources
     if not (source in log_sources):
         log_sources[source] = 0
-    else:
-        if log_sources[source] == 0:
-            logger.info (source + ": " + string)
-        log_sources[source] += 1
-        if log_sources[source] >= frequency:
-            log_sources[source] = 0
+    if log_sources[source] == 0:
+        logger.info (source + ": " + string)
+    log_sources[source] += 1
+    if log_sources[source] >= frequency:
+        log_sources[source] = 0
 
 def get_rate(current, desired, time_divisor, limits):
     error = desired - current
@@ -194,14 +193,20 @@ def rate_curve(x, curve_pieces):
     else:
         return sign * curve_pieces[-1][1]
 
-def AddPosition(position, distance, direction, rel_lng = 0.0):
+
+def AddPosition(position, distance, direction, rel_lng = 0.0, periodic_logging=None, frequency=10):
     if not rel_lng:
-        rel_lng = GetRelLng(position[1])
+        rel_lng = GetRelLng(position[1] * RAD_DEG)
     direction *= M_PI / 180.0
     dlat = distance * math.cos(direction) / 60.0
     dlng = distance * math.sin(direction) / (rel_lng * 60.0)
-    position = (position[0] + dlng, position[1] + dlat)
-    return position
+    ret = (position[0] + dlng, position[1] + dlat)
+    if periodic_logging:
+        logstr = "AddPosition (%g,%g)+(%g/%g) =(%g,%g) / (%g,%g), rel_lng=%g"%(
+            position[0], position[1], distance, direction, dlng, dlat, ret[0], ret[1], rel_lng)
+        log_occasional_info (periodic_logging, logstr, frequency)
+
+    return ret
 
 
 def atan_globe(lng, lat):
@@ -232,7 +237,7 @@ def RMSDiff (l1, l2):
 
 def CourseDeviation(pos, course, rel_lng = 0):
     if rel_lng == 0:
-        rel_lng = GetRelLng(course[0][1])
+        rel_lng = GetRelLng(course[0][1] * RAD_DEG)
     dlng, dlat = GetAdjustedPolarDeltas(course, rel_lng)
     heading = atan_globe(dlng, dlat) * 180 / M_PI
     cvec = Spatial.Vector(dlng,dlat,0)

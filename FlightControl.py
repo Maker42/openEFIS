@@ -1,4 +1,4 @@
-# Copyright (C) 2016  Garrett Herschleb
+# Copyright (C) 2015-2016  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -41,7 +41,6 @@ class FlightControl(FileConfig.FileConfig):
         self.JournalFileName = ''
 
         # Current State properties
-        self.CurrentHeadingRateChange = sensors.HeadingRateChange()
         self.CurrentAltitude = sensors.Altitude()
         self.CurrentAirSpeed = sensors.AirSpeed()
         self.CurrentClimbRate = sensors.ClimbRate()
@@ -139,7 +138,6 @@ class FlightControl(FileConfig.FileConfig):
         mn,mx = self._throttle_control.GetLimits()
         self._throttle_range = (mn,mx)
         self._throttlePID.SetOutputLimits (mn, mx)
-        self.CurrentHeadingRateChange = self._sensors.HeadingRateChange()
 
         self.CurrentAirSpeed = self._sensors.AirSpeed()
         self._throttlePID.SetSetPoint (self.DesiredAirSpeed)
@@ -173,12 +171,12 @@ class FlightControl(FileConfig.FileConfig):
             crret = self.UpdateClimbratePitch(ms)
             if asret < crret:
                 self._using_airspeed_pitch = True
-                logger.debug ("Pitch chosen to preserve airspeed (%g) instead of climb rate (%g)",
+                logger.log (3, "Pitch chosen to preserve airspeed (%g) instead of climb rate (%g)",
                     asret, crret)
                 ret = asret
             else:
                 self._using_airspeed_pitch = False
-                logger.debug ("Pitch chosen to preserve climb rate (%g) instead of air speed (%g)",
+                logger.log (3, "Pitch chosen to preserve climb rate (%g) instead of air speed (%g)",
                     crret, asret)
                 ret = crret
         else:
