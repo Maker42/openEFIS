@@ -359,6 +359,8 @@ class FlightControl(FileConfig.FileConfig):
             if self._desired_pitch < self._last_pitch:
                 pitch_diff *= -1
             self._last_pitch += pitch_diff
+        else:
+            self._last_pitch = self._desired_pitch
         self._attitude_control.UpdateControls (self._last_pitch, self._desired_roll, 0)
         self._last_update_time = ms
 

@@ -196,13 +196,18 @@ class TakeoffControl(FileConfig.FileConfig):
                 if self._desired_pitch < self._last_pitch:
                     pitch_diff *= -1
                 self._last_pitch += pitch_diff
+            else:
+                self._last_pitch = self._desired_pitch
             desired_yaw = None if self._flight_mode == SUBMODE_ACCELERATE else 0
             self._attitude_control.UpdateControls (self._last_pitch, 0.0, desired_yaw)
         self._last_update_time = ms
 
     def ComputeHeadingRate(self):
         pos = self._sensors.Position()
-        turn_radius = ((360.0 * (self._sensors.GroundSpeed() / 60.0) / self.TurnRate) /
+        speed = self._sensors.GroundSpeed()
+        if speed <= 0:
+            speed = 10.0
+        turn_radius = ((360.0 * (speed / 60.0) / self.TurnRate) /
                             (4 * util.M_PI))
         turn_radius *= self.InterceptMultiplier
         intercept_heading = util.CourseHeading(pos, self.DesiredCourse, turn_radius)
