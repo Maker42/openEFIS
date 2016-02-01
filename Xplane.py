@@ -37,9 +37,9 @@ class XplaneControl:
         self._lookup_tables = list()
         self._throttle_table = None
         self.controls = [
-                (b"sim/joystick/yoke_pitch_ratio", "YokePitch", (-1.0, 1.0)), #	The deflection of the joystick axis controlling pitch. Use override_joystick or override_joystick_pitch
-                (b"sim/joystick/yoke_roll_ratio", "YokeRoll", (-1.0, 1.0)),  #	The deflection of the joystick axis controlling roll. Use override_joystick or override_joystick_roll
-                (b"sim/joystick/yoke_heading_ratio", "Yaw", (-1.0, 1.0)),   #	The deflection of the joystick axis controlling yaw. Use override_joystick or override_joystick_heading
+                (b"sim/joystick/yoke_pitch_ratio", "Elevator", (-1.0, 1.0)), #	The deflection of the joystick axis controlling pitch. Use override_joystick or override_joystick_pitch
+                (b"sim/joystick/yoke_roll_ratio", "Aileron", (-1.0, 1.0)),  #	The deflection of the joystick axis controlling roll. Use override_joystick or override_joystick_roll
+                (b"sim/joystick/yoke_heading_ratio", "Rudder", (-1.0, 1.0)),   #	The deflection of the joystick axis controlling yaw. Use override_joystick or override_joystick_heading
                 (b"sim/flightmodel/engine/ENGN_thro_override", "Throttle", (0.0, 1.0)),  #	y	ratio	Throttle (per engine) as set by user, 0 = idle, 1 = max
                 (b"sim/cockpit2/controls/gear_handle_down", "Gear", (0.0, 1.0)),
                 (b"sim/flightmodel/controls/flaprqst", "Flaps", (0.0, 1.0)),
@@ -156,7 +156,7 @@ class XplaneSensors:
                 (0, "RollRate", b"sim/flightmodel/position/P"),
                 (0, "Pitch", b"sim/flightmodel/position/true_theta"),
                 (0, "PitchRate", b"sim/flightmodel/position/Q"),
-                (0, "Yaw", b"sim/flightmodel/position/beta"),
+                (0, "Yaw", b"sim/cockpit2/gauges/indicators/slip_deg"),
                 (0, "AirSpeed", b"sim/flightmodel/position/indicated_airspeed"),
                 (0, "GroundSpeed", b"sim/flightmodel/position/groundspeed"),
                 (0, "ClimbRate", b"sim/flightmodel/position/vh_ind_fpm"),

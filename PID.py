@@ -77,9 +77,7 @@ class PID:
           # Remember some variables for next time*/
           self.lastInput = inp
           self.lastTime = now
-          return self.lastOutput
-       else:
-          return self.lastOutput
+       return self.lastOutput
 
 
     """ SetTunings(...)*************************************************************

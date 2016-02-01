@@ -268,3 +268,43 @@ def CourseDeviation(pos, course, rel_lng = 0):
         side *= -1
 
     return (side, forward, heading, heading_to_dest)
+
+def CourseHeading(pos, course, turn_radius, periodic_logging=None, frequency=10):
+    side, forward, course_heading, heading_to_dest = CourseDeviation(pos, course)
+    if abs(side) > turn_radius:
+        diff = heading_to_dest - course_heading
+        if diff > 180:
+            diff -= 360
+        elif diff < -180:
+            diff += 360
+        if diff > 0:
+            intercept_heading = course_heading + 90
+        else:
+            intercept_heading = course_heading - 90
+    else:
+        d1 = turn_radius - abs(side)
+        # cos(a1) = d1 / turn_radius
+        a1 = math.acos (d1 / turn_radius) * DEG_RAD
+        if side > 0:
+            intercept_heading = course_heading - a1
+        else:
+            intercept_heading = course_heading + a1
+        # Example 1: course_heading = 0, side = .1, turn_radius = .5
+        #   d1 = .4
+        #   a1 = acos (.4 / .5) = 37 degrees
+        #   ih = -37
+        # Example 2: course_heading = 0, side = 0, turn_radius = .5
+        #   d1 = .5
+        #   a1 = acos (.5 / .5) = 0 degrees
+        #   ih = 0
+        # Example 3: course_heading = 0, side = -.1, turn_radius = .5
+        #   d1 = .4
+        #   a1 = acos (.4 / .5) = 37 degrees
+        #   ih = 37
+    if periodic_logging != None:
+        log_occasional_info(periodic_logging,
+                "cur_pos = (%g,%g), to=(%g,%g), course_h=%g, h_dest=%g, side = %g, forward=%g, intercept=%g"%(
+                    pos[0], pos[1],
+                    course[1][0], course[1][1],
+                    course_heading, heading_to_dest, side, forward, intercept_heading), frequency)
+    return intercept_heading

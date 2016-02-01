@@ -38,7 +38,6 @@ class TakeoffControl(FileConfig.FileConfig):
         # Current State properties
         self.CurrentAirSpeed = sensors.AirSpeed()
         self.CurrentClimbRate = sensors.ClimbRate()
-        self.CurrentTrueHeading = sensors.TrueHeading()
         self.CurrentHeadingRate = sensors.HeadingRateChange()
 
         self._journal_file = None
@@ -64,6 +63,10 @@ class TakeoffControl(FileConfig.FileConfig):
         self.TakeoffPitch = 15.0
         self.InitialRudder = .4
         self.TakeoffFlaps = 0.2
+        self.CompletionAGL = 20.0
+
+        self.TurnRate = 10.0     # Degrees per minute
+        self.InterceptMultiplier = 20.0
 
         # Operational properties
         self._attitude_control = att_cont
@@ -92,9 +95,6 @@ class TakeoffControl(FileConfig.FileConfig):
 
         mn,mx = self._rudder_control.GetLimits()
         self._RudderPID.SetOutputLimits (mn, mx)
-        self.CurrentHeadingRate = self._sensors.HeadingRateChange()
-        self.CurrentTrueHeading = self._sensors.TrueHeading()
-        self._RudderPID.SetSetPoint (self.ComputeHeadingRate())
         if self._flap_control:
             self._flap_control.Set(self.TakeoffFlaps)
 
@@ -132,7 +132,6 @@ class TakeoffControl(FileConfig.FileConfig):
     def Update(self):
         ms = util.millis(self._sensors.Time())
         self.CurrentAirSpeed = self._sensors.AirSpeed()
-        self.CurrentTrueHeading = self._sensors.TrueHeading()
         self.CurrentClimbRate = self._sensors.ClimbRate()
         self.CurrentHeadingRate = self._sensors.HeadingRateChange()
 
@@ -157,7 +156,7 @@ class TakeoffControl(FileConfig.FileConfig):
                 self._flight_mode = SUBMODE_POSITIVE_CLIMB
                 logger.debug ("Takeoff looking for positive climb")
         elif self._flight_mode == SUBMODE_POSITIVE_CLIMB:
-            if self.CurrentClimbRate >= 100.0 and self._sensors.AGL() > 100.0:
+            if self.CurrentClimbRate >= 100.0 and self._sensors.AGL() > self.CompletionAGL:
                 if self._gear_control != None:
                     self._gear_control.Set(0)
                     self._flight_mode = SUBMODE_GEAR_UP
@@ -202,14 +201,20 @@ class TakeoffControl(FileConfig.FileConfig):
         self._last_update_time = ms
 
     def ComputeHeadingRate(self):
-        heading_error = self.DesiredTrueHeading - self.CurrentTrueHeading
+        pos = self._sensors.Position()
+        turn_radius = ((360.0 * (self._sensors.GroundSpeed() / 60.0) / self.TurnRate) /
+                            (4 * util.M_PI))
+        turn_radius *= self.InterceptMultiplier
+        intercept_heading = util.CourseHeading(pos, self.DesiredCourse, turn_radius)
+
+        heading_error = intercept_heading - self._sensors.GroundTrack()
         if heading_error < -300:
             heading_error += 360
         elif heading_error > 300:
             heading_error -= 360
         ret = util.rate_curve(abs(heading_error), self.HeadingRateCurve)
         ret = ret if heading_error >= 0 else -ret
-        #logger.debug ("Desired Heading Rate %g/%g==>%g", self.CurrentTrueHeading, self.DesiredTrueHeading, ret)
+        #logger.debug("Heading rate: Ground Track = %g, error = %g, ret=%g", self._sensors.GroundTrack(), heading_error, ret)
         return ret
 
     def PIDOptimizationStart(self, which_pid, params, scoring_object, outfile):

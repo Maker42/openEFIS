@@ -380,48 +380,13 @@ class FlightControl(FileConfig.FileConfig):
     # Compute a good self._desired_heading_rate_change based on the course, speed, heading and position
     def compute_roll_from_course(self):
         pos = self._sensors.Position()
-        side, forward, course_heading, heading_to_dest = util.CourseDeviation(pos, self.DesiredCourse)
-        turn_radius = (360.0 * (self.DesiredAirSpeed / 60.0) / self.TurnRate) / (4 * util.M_PI)
+        turn_radius = (360.0 * (self.CurrentAirSpeed / 60.0) / self.TurnRate) / (4 * util.M_PI)
         turn_radius *= self.InterceptMultiplier
-        if abs(side) > turn_radius:
-            diff = heading_to_dest - course_heading
-            if diff > 180:
-                diff -= 360
-            elif diff < -180:
-                diff += 360
-            if diff > 0:
-                intercept_heading = course_heading + 90
-            else:
-                intercept_heading = course_heading - 90
-        else:
-            d1 = turn_radius - abs(side)
-            # cos(a1) = d1 / turn_radius
-            a1 = math.acos (d1 / turn_radius) * util.DEG_RAD
-            if side > 0:
-                intercept_heading = course_heading - a1
-            else:
-                intercept_heading = course_heading + a1
-            # Example 1: course_heading = 0, side = .1, turn_radius = .5
-            #   d1 = .4
-            #   a1 = acos (.4 / .5) = 37 degrees
-            #   ih = -37
-            # Example 2: course_heading = 0, side = 0, turn_radius = .5
-            #   d1 = .5
-            #   a1 = acos (.5 / .5) = 0 degrees
-            #   ih = 0
-            # Example 3: course_heading = 0, side = -.1, turn_radius = .5
-            #   d1 = .4
-            #   a1 = acos (.4 / .5) = 37 degrees
-            #   ih = 37
-        #util.log_occasional_info("compute_roll_from_course",
-        #        "cur_pos = (%g,%g), to=(%g,%g), course_h=%g, h_dest=%g, side = %g, forward=%g, intercept=%g"%(
-        #            pos[0], pos[1],
-        #            self.DesiredCourse[1][0], self.DesiredCourse[1][1],
-        #            course_heading, heading_to_dest, side, forward, intercept_heading), 100)
+        intercept_heading = util.CourseHeading(pos, self.DesiredCourse, turn_radius)
         return self.compute_roll(intercept_heading)
 
     def compute_roll(self, intercept_heading):
-        heading_error = intercept_heading - self.CurrentTrueHeading
+        heading_error = intercept_heading - self._sensors.GroundTrack()
         # Handle wrap around
         if heading_error > 180:
             heading_error -= 360
