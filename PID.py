@@ -39,6 +39,7 @@ class PID:
         self.lastTime = millis-self.SampleTime
         self.outMin = 0
         self.outMax = 1023
+        self.acheivementTime = 0.0
 
      
     """ Compute() **********************************************************************
@@ -65,7 +66,11 @@ class PID:
           dInput = (inp - self.lastInput)
      
           # Compute PID Output*/
-          self.lastOutput = self.kp * error + self.ITerm- self.kd * dInput
+          if self.acheivementTime > 0.0:
+              self.lastOutput = (self.kp * error + self.ITerm -
+                      self.kd * (dInput - error / self.acheivementTime))
+          else:
+              self.lastOutput = self.kp * error + self.ITerm - self.kd * dInput
           
           if(self.lastOutput > self.outMax):
             self.lastOutput = self.outMax
@@ -202,5 +207,7 @@ class PID:
     def GetDirection(self):
         return self.controllerDirection
 
-    def SetSetPoint (self, setpoint):
+    def SetSetPoint (self, setpoint, acheivementTime=0.0):
         self.mySetpoint = setpoint
+        SampleTimeInSec = float(self.SampleTime)/1000.0
+        self.acheivementTime = acheivementTime * SampleTimeInSec

@@ -142,8 +142,9 @@ if '__main__' == __name__:
         UnitTestFixture.Update()
 
     # Uncomment the following two lines for simulations that start airborn
-    #craft._flight_control._throttle_control.Set(.5)
-    #craft.ChangeMode (Globals.FLIGHT_MODE_AIRBORN)
+    if craft._sensors.AGL() > 20 and craft._sensors.AirSpeed() > 20:
+        craft._flight_control._throttle_control.Set(.5)
+        craft.ChangeMode (Globals.FLIGHT_MODE_AIRBORN)
     dispatch_command_number = 0
     if args.pickup > 0:
         dispatch_command_number = args.pickup

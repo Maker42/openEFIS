@@ -119,7 +119,7 @@ class AttitudeControl(FileConfig.FileConfig):
 
     # Notifies that the take off roll has accompished enough speed that flight controls
     # have responsibility and authority. Activates PIDs.
-    def StartFlight(self):
+    def StartFlight(self, yaw_mode=None):
         mn,mx = self._elevator_control.GetLimits()
         self._pitchPID.SetOutputLimits (mn, mx)
         mn,mx = self._aileron_control.GetLimits()
@@ -138,6 +138,7 @@ class AttitudeControl(FileConfig.FileConfig):
         self.CurrentRollRate = self._sensors.RollRate()
         self._rollRatePID.SetSetPoint (self.CurrentRollRate)
         self._rollRatePID.SetMode (PID.AUTOMATIC, self.CurrentRollRate, self._aileron_control.GetCurrent())
+        self._yaw_mode = yaw_mode
 
         if self.JournalFileName and (not self._journal_file):
             self._journal_file = open(self.JournalFileName, 'w+')
@@ -214,12 +215,23 @@ class AttitudeControl(FileConfig.FileConfig):
         if self.DesiredYaw != None:
             if self._in_pid_optimization != "yaw":
                 self._yawPID.SetSetPoint (self.DesiredYaw)
-            rudder_value = self._yawPID.Compute(self.CurrentYaw, ms)
-            self._rudder_control.Set (rudder_value + self.rudder_offset())
-            if self._in_pid_optimization == "yaw":
-                self._pid_optimization_scoring.IncrementScore(self.CurrentYaw, rudder_value, self._pid_optimization_goal, self._journal_file)
-            if self._journal_file and self.JournalRoll:
+            if self._yaw_mode == None:
+                rudder_value = self._yawPID.Compute(self.CurrentYaw, ms) + self.rudder_offset()
+                if self._in_pid_optimization == "yaw":
+                    self._pid_optimization_scoring.IncrementScore(self.CurrentYaw, rudder_value, self._pid_optimization_goal, self._journal_file)
+            elif self._yaw_mode == 'side_slip':
+                input_val = self._sensors.TrueHeading()
+                if input_val - self.DesiredYaw < -180:
+                    input_val += 360
+                elif input_val - self.DesiredYaw > 180:
+                    input_val -= 360
+                rudder_value = self._yawPID.Compute(input_val, ms)
+                logger.debug ("Side slip: %g/%g ==> %g", self._sensors.TrueHeading(),
+                        self.DesiredYaw, rudder_value)
+            self._rudder_control.Set (rudder_value)
+            if self._journal_file and self.JournalYaw:
                 self._journal_file.write(",%g,%g,%g"%(self.DesiredYaw, self.CurrentYaw, rudder_value))
+
         if self._journal_file and (not self._in_pid_optimization):
             self._journal_file.write("\n")
             self._journal_flush_count += 1

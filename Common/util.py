@@ -28,6 +28,7 @@ NAUT_MILES_PER_METER = .0005399568
 G_IN_KNOTS_PER_SEC = 9.98 * NAUT_MILES_PER_METER * 3600.0
 RAD_DEG = M_PI / 180.0
 DEG_RAD = 180.0 / M_PI
+FEET_METER = 1.0/.3048
 
 def read_cont_expr (first_args, lines):
     ret = None
@@ -78,7 +79,7 @@ def GetAdjustedPolarDeltas(course, rel_lng=0):
     return (dlng*rel_lng, dlat)
 
 # Computes true heading from a given course
-def TrueHeadingAndDistance(course, periodic_logging=None, frequency=10):
+def TrueHeadingAndDistance(course, periodic_logging=None, frequency=10, rel_lng=0):
     dlng,dlat = get_polar_deltas(course)
     if dlng > MAX_COURSE_HOP_LENGTH_DEG or dlat > MAX_COURSE_HOP_LENGTH_DEG:
         expanded_course = ExpandCourseList(course, MAX_COURSE_HOP_LENGTH_DEG)
@@ -86,7 +87,10 @@ def TrueHeadingAndDistance(course, periodic_logging=None, frequency=10):
     lat1 = course[0][1] * M_PI / 180.0
 
     # Determine how far is a longitude increment relative to latitude at this latitude
-    relative_lng_length = GetRelLng(lat1)
+    if rel_lng == 0:
+        relative_lng_length = GetRelLng(lat1)
+    else:
+        relative_lng_length = rel_lng
     dlng *= relative_lng_length
 
     heading = atan_globe(dlng, dlat) * 180 / M_PI
@@ -308,3 +312,22 @@ def CourseHeading(pos, course, turn_radius, periodic_logging=None, frequency=10)
                     course[1][0], course[1][1],
                     course_heading, heading_to_dest, side, forward, intercept_heading), frequency)
     return intercept_heading
+
+
+
+def VORDME(pos, course_or_pos):
+    a,b = course_or_pos
+    if isinstance(a,tuple):
+        course_heading,_,rel_lng = TrueHeadingAndDistance(course_or_pos)
+        rel_course = (course_or_pos[0], pos)
+    else:
+        course_heading = 0
+        rel_lng=0
+        rel_course = (course_or_pos, pos)
+    direct_heading,dist,rel_lng = TrueHeadingAndDistance(rel_course, rel_lng=rel_lng)
+    bearing = direct_heading - course_heading
+    if bearing > 180:
+        bearing -= 360
+    elif bearing < -180:
+        bearing += 360
+    return bearing,dist,course_heading,rel_lng

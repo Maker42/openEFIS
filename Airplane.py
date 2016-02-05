@@ -21,7 +21,7 @@ import SenseControl, CommandControl
 import Xplane, SurfaceControl, AttitudeControl, FlightControl, AttitudeControlVTOL
 import TakeoffControlVTOL, LandingControlVTOL, AttitudeVTOLEstimation
 import MiddleEngineTiltControl, VTOLYawControl, SolenoidControl, ThrottleControl
-import TakeoffControl
+import TakeoffControl, LandingControl
 import Spatial
 import UnitTestFixture
 
@@ -37,7 +37,7 @@ class Airplane(FileConfig.FileConfig):
         # Operating parameters:
         self.BatteryMinReserve = 30
         self.ApproachEndpoints = list()
-        self.RunwayAltitude = 0
+        self.RunwayAltitude = None
         self.RunwayTouchdownPoint = None
         self.RunwayHeading = 0
         self.RunwayLength = 0
@@ -136,7 +136,7 @@ class Airplane(FileConfig.FileConfig):
         Globals.TheAircraft = self
 
     def ComputeRunwayEndpoints(self):
-        if self.RunwayAltitude == 0:
+        if self.RunwayAltitude == None:
             self.RunwayAltitude = self._sensors.Altitude()
         if len(self.ApproachEndpoints) == 0:
             if self.RunwayTouchdownPoint != None:
@@ -203,8 +203,9 @@ class Airplane(FileConfig.FileConfig):
                     self._middle_engine_tilt_control, self._forward_engine_release_control,
                     self._sensors, self._attitude_vtol_estimation, self)
         else:
-            self._landing_control = LandingControl.LandingControl(self._attitude_control,
-                    self._throttle_control, self._sensors, self)
+            self._landing_control = LandingControl.LandingControl(self._flight_control,
+                    self._attitude_control, self._throttle_control,
+                    self._gear_control, self._flap_control, self._sensors, self)
         self._landing_control.initialize(filelines)
 
     def init_yaw_vtol_control(self, args, filelines):
@@ -292,6 +293,10 @@ class Airplane(FileConfig.FileConfig):
             self._elevator_control.Set(.7)
         else:
             self._elevator_control.Set(-.05)
+        logger.info("Taking off on runway (%g,%g) - (%g,%g), %g feet alt",
+                self.DesiredCourse[0][0], self.DesiredCourse[0][1], 
+                self.DesiredCourse[1][0], self.DesiredCourse[1][1], 
+                self.RunwayAltitude)
 
     def NextWayPoint(self, next_waypoint, desired_altitude=0, desired_airspeed=0):
         assert (self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN)
@@ -312,7 +317,7 @@ class Airplane(FileConfig.FileConfig):
         self._flight_control.Swoop(low_alt, high_alt, min_airspeed)
         return "Swooping down to %g and back to %g"%(low_alt, high_alt)
 
-    def FlyCourse(self, course, desired_altitude=0, desired_airspeed=0):
+    def FlyCourse(self, course, desired_altitude=0, desired_airspeed=0, rounding=False):
         assert (self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN)
         self.DesiredCourse = course
         heading,_a,_ = util.TrueHeadingAndDistance (self.DesiredCourse)
@@ -326,7 +331,7 @@ class Airplane(FileConfig.FileConfig):
             self.DesiredAltitude = desired_altitude
         if desired_airspeed:
             self.DesiredAirSpeed = desired_airspeed
-        self._flight_control.FlyCourse (course, desired_altitude, desired_airspeed)
+        self._flight_control.FlyCourse (course, desired_altitude, desired_airspeed, rounding)
         return ret
 
     def FlyTo(self, next_waypoint, desired_altitude=0, desired_airspeed=0):
@@ -385,7 +390,9 @@ class Airplane(FileConfig.FileConfig):
         return self._sensors.Snapshot()
 
     # Inputs specify touchdown point and (exact) heading and altitude of runway
-    def Land(self, touchdown=None, length=0, heading=-1, end=None, runway_altitude=None):
+    def Land(self, touchdown=None, length=0, heading=-1, end=None, runway_altitude=None,
+                    outer_marker=None, outer_altitude=0,
+                    middle_marker=None, right_pattern=False, pattern_alt=0):
         if (self.CurrentFlightMode == Globals.FLIGHT_MODE_GROUND):
             self._throttle_control.Set(0)
         else:
@@ -393,6 +400,8 @@ class Airplane(FileConfig.FileConfig):
                 self.RunwayTouchdownPoint = touchdown
                 if end:
                     self.ApproachEndpoints = [position, end]
+                else:
+                    self.ApproachEndpoints = list()
             if length:
                 self.RunwayLength = length
             if heading >= 0:
@@ -402,10 +411,15 @@ class Airplane(FileConfig.FileConfig):
             self.ComputeRunwayEndpoints()
             self.ChangeMode (Globals.FLIGHT_MODE_LANDING)
             self.DesiredCourse = self.ApproachEndpoints
-            self._landing_control.Land(self.DesiredCourse, self.RunwayAltitude)
+            logger.info("Landing on runway (%g,%g) - (%g,%g), %g feet alt",
+                    self.DesiredCourse[0][0], self.DesiredCourse[0][1], 
+                    self.DesiredCourse[1][0], self.DesiredCourse[1][1], 
+                    self.RunwayAltitude)
+            self._landing_control.Land(self.DesiredCourse, self.RunwayAltitude,
+                   outer_marker, outer_altitude, middle_marker, right_pattern, pattern_alt)
     
     def CompleteRunway(self):
-        self.FlyCourse(self.ApproachEndpoints, self.RunwayAltitude+1000)
+        self.FlyCourse(self.ApproachEndpoints, self.RunwayAltitude+1000, rounding=False)
 
     def PickupFromPlan(self, step_number):
         if step_number < 0:
@@ -467,7 +481,7 @@ class Airplane(FileConfig.FileConfig):
         elif self.CurrentFlightMode == Globals.FLIGHT_MODE_GROUND:
             self._ground_control.Start()
         elif self.CurrentFlightMode == Globals.FLIGHT_MODE_LANDING:
-            self._landing_control.Start()
+            self._landing_control.Start(last_desired_pitch)
         elif self.CurrentFlightMode == Globals.FLIGHT_MODE_TAKEOFF:
             self._takeoff_control.Start()
 

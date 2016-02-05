@@ -1,2 +1,3 @@
-Takeoff(0.0)
-Land()
+Takeoff(1.5)
+CompleteRunway()
+Land((-122.308,47.4636), 1.0, 180, runway_altitude=408, pattern_alt=2500)

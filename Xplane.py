@@ -145,9 +145,6 @@ class XplaneControl:
         self.servo_range_size = self.ServoRange[1] - self.ServoRange[0]
         return
 
-    def GetLimits(self, channel):
-        return self.ServoRange
-
 class XplaneSensors:
     def __init__(self):
         self.sensor_suite = [(0, "Altitude", b"sim/flightmodel/misc/h_ind"),

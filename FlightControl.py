@@ -13,7 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-import time, logging, math
+import time, logging
 
 import PID
 import FileConfig
@@ -64,6 +64,8 @@ class FlightControl(FileConfig.FileConfig):
 
         # Configuration properties
         self.AltitudeAchievementMinutes = 1.2
+        self.AirSpeedAchievementMinutes = 0.5
+        self.ClimbRateAchievementSeconds = 10.0
         self.ClimbRateLimits = (-1000.0, 1000.0)        # feet / minute
         self.PitchPIDLimits = [(0,20.0), (45,0)]  # (roll, max degrees)
 
@@ -89,6 +91,9 @@ class FlightControl(FileConfig.FileConfig):
 
         self.EngineOutPitchCurve = None
 
+        self.DescentCurve = None
+        self.CourseProjectionSeconds = 3.0
+
         # Will Use one of the following 2 PIDS to request pitch angle:
         # Input: Current Climb Rate; SetPoint: Desired Climb Rate; Output: Desired Pitch Attitude
         self._climbPitchPID = None
@@ -102,6 +107,12 @@ class FlightControl(FileConfig.FileConfig):
         self._attitude_control = att_cont
         self._sensors = sensors
         self._throttle_control = throttle_control
+        self._pitch_mode = None     # None == normal, otherwise "controlled_descent"
+        self._rel_lng = 0
+        self._descent_starting_altitude = 0 # Used for controlled_descent mode
+        self._descent_distance = 0          # Used for controlled_descent mode
+        self._nominal_descent_rate = 0      # Used for controlled_descent mode
+        self._airspeed_achievement_minutes = 0.0
 
         FileConfig.FileConfig.__init__(self)
 
@@ -130,6 +141,7 @@ class FlightControl(FileConfig.FileConfig):
         self._climbPitchPID.SetSampleTime (self.PitchPIDSampleTime)
         self._airspeedPitchPID.SetSampleTime (self.PitchPIDSampleTime)
         self._throttlePID.SetSampleTime (self.ThrottlePIDSampleTime)
+        self._airspeed_achievement_minutes = self.AirSpeedAchievementMinutes
 
     # Notifies that the take off roll has accompished enough speed that flight controls
     # have responsibility and authority. Activates PIDs.
@@ -148,8 +160,10 @@ class FlightControl(FileConfig.FileConfig):
 
         self._desired_pitch = last_desired_pitch
         self._last_pitch = self._sensors.Pitch()
+        self._airspeed_achievement_minutes = self.AirSpeedAchievementMinutes
 
         self._attitude_control.StartFlight()
+
         if self.JournalFileName and (not self._journal_file):
             self._journal_file = open(self.JournalFileName, 'w+')
             if self._journal_file:
@@ -161,28 +175,46 @@ class FlightControl(FileConfig.FileConfig):
                 self._journal_file.write("\n")
 
     def SetPitch(self, ms):
-        # Figure out if we're using air speed or climb rate to select pitch:
-        if (self._throttle_control.GetCurrent() == self._throttle_range[1] and
-                (self.CurrentAirSpeed <= self.MinClimbAirSpeed  or
-                 (self._using_airspeed_pitch and self.CurrentAirSpeed <= self.MinClimbAirSpeed * 1.1)) and
-                self.DesiredAltitude > self.CurrentAltitude):
-            # Change to Use airspeed to control pitch
-            asret = self.UpdateAirspeedPitch(ms)
-            crret = self.UpdateClimbratePitch(ms)
-            if asret < crret:
-                self._using_airspeed_pitch = True
-                logger.log (3, "Pitch chosen to preserve airspeed (%g) instead of climb rate (%g)",
-                    asret, crret)
-                ret = asret
+        if self._pitch_mode == None:
+            # Figure out if we're using air speed or climb rate to select pitch:
+            if (self._throttle_control.GetCurrent() == self._throttle_range[1] and
+                    (self.CurrentAirSpeed <= self.MinClimbAirSpeed  or
+                     (self._using_airspeed_pitch and
+                         self.CurrentAirSpeed <= self.MinClimbAirSpeed * 1.1)) and
+                     self.DesiredAltitude > self.CurrentAltitude):
+                # Change to Use airspeed to control pitch
+                asret = self.UpdateAirspeedPitch(ms)
+                crret = self.UpdateClimbratePitch(ms)
+                if asret < crret:
+                    self._using_airspeed_pitch = True
+                    logger.log (3, "Pitch chosen to preserve airspeed (%g) instead of climb rate (%g)",
+                        asret, crret)
+                    ret = asret
+                else:
+                    self._using_airspeed_pitch = False
+                    logger.log (3, "Pitch chosen to preserve climb rate (%g) instead of air speed (%g)",
+                        crret, asret)
+                    ret = crret
             else:
+                self._airspeedPitchPID.SetMode (PID.MANUAL, self.CurrentAirSpeed, -self._desired_pitch)
+                ret = self.UpdateClimbratePitch(ms)
                 self._using_airspeed_pitch = False
-                logger.log (3, "Pitch chosen to preserve climb rate (%g) instead of air speed (%g)",
-                    crret, asret)
-                ret = crret
-        else:
-            self._airspeedPitchPID.SetMode (PID.MANUAL, self.CurrentAirSpeed, -self._desired_pitch)
-            ret = self.UpdateClimbratePitch(ms)
-            self._using_airspeed_pitch = False
+        else:       # Pitch mode for controlled descent
+            if self._climbPitchPID.GetMode() != PID.AUTOMATIC:
+                self._climbPitchPID.SetMode (PID.AUTOMATIC,
+                                            self.CurrentClimbRate, self._desired_pitch)
+            # Figure out how high or low are we
+            remaining_course = [self.CurrentPosition, self.DesiredCourse[1]]
+            _,remaining_distance,self._rel_lng = util.TrueHeadingAndDistance(remaining_course,
+                    rel_lng=self._rel_lng)
+            fraction_remaining = remaining_distance / self._descent_distance 
+            desired_altitude = (self.DesiredAltitude * fraction_remaining +
+                                self._descent_starting_altitude * (1 - fraction_remaining))
+            altitude_error = self.CurrentAltitude - desired_altitude
+            self._desired_climb_rate = util.rate_curve (altitude_error, self.DescentCurve)
+            self._desired_climb_rate += self._nominal_descent_rate
+            self._climbPitchPID.SetSetPoint (self._desired_climb_rate, self.ClimbRateAchievementSeconds)
+            ret = self._climbPitchPID.Compute (self.CurrentClimbRate, ms)
         return ret
 
     def UpdateAirspeedPitch(self, ms):
@@ -215,7 +247,8 @@ class FlightControl(FileConfig.FileConfig):
                                             self.CurrentClimbRate, self._desired_pitch)
             self._set_pitch_pid_limits(self.PitchPIDLimits, self._climbPitchPID)
             if self._in_pid_optimization != "climb_pitch":
-                self._climbPitchPID.SetSetPoint (self._desired_climb_rate)
+                self._climbPitchPID.SetSetPoint (self._desired_climb_rate,
+                        self.ClimbRateAchievementSeconds)
             desired_pitch = self._climbPitchPID.Compute (self.CurrentClimbRate, ms)
             logger.log (5, "Climb Pitch PID: %g/%g-->%g",
                     self.CurrentClimbRate, self._desired_climb_rate, desired_pitch)
@@ -228,8 +261,6 @@ class FlightControl(FileConfig.FileConfig):
                 self._climbPitchPID.SetMode (PID.MANUAL,
                                             self.CurrentClimbRate, self._desired_pitch)
             desired_pitch = util.rate_curve(alt_err, self.ClimbPitchCurve)
-            if self.DesiredAltitude < self.CurrentAltitude:
-                desired_pitch *= -1
             mn,mx = self._find_pitch_limits(self.PitchPIDLimits)
             if desired_pitch < mn:
                 desired_pitch = mn
@@ -330,7 +361,8 @@ class FlightControl(FileConfig.FileConfig):
             self._journal_file.write(str(ms))
         if self._throttlePID.GetMode() == PID.AUTOMATIC:
             if self._pid_optimization_goal != "throttle":
-                self._throttlePID.SetSetPoint (self.DesiredAirSpeed)
+                self._throttlePID.SetSetPoint (self.DesiredAirSpeed,
+                        self._airspeed_achievement_minutes * 60.0)
             th = self._throttlePID.Compute (self.CurrentAirSpeed, ms)
             if self._in_pid_optimization == "throttle":
                 self._pid_optimization_scoring.IncrementScore(self.CurrentAirSpeed, th, self._pid_optimization_goal, self._journal_file)
@@ -382,6 +414,8 @@ class FlightControl(FileConfig.FileConfig):
     # Compute a good self._desired_heading_rate_change based on the course, speed, heading and position
     def compute_roll_from_course(self):
         pos = self._sensors.Position()
+        pos = util.AddPosition(pos, self._sensors.GroundSpeed() * self.CourseProjectionSeconds / 3600,
+                self._sensors.GroundTrack())
         turn_radius = (360.0 * (self.CurrentAirSpeed / 60.0) / self.TurnRate) / (4 * util.M_PI)
         turn_radius *= self.InterceptMultiplier
         intercept_heading = util.CourseHeading(pos, self.DesiredCourse, turn_radius)
@@ -414,6 +448,7 @@ class FlightControl(FileConfig.FileConfig):
         self._flight_mode = SUBMODE_COURSE
         self.DesiredCourse = course
         self.DesiredAltitude = alt
+        self._pitch_mode = None     # None == normal, otherwise "controlled_descent"
 
     def TurnTo(self, heading, roll_angle = 0, alt = 0):
         logger.debug ("Flight control turning to %g, roll %g, alt %d", heading, roll_angle, alt)
@@ -423,6 +458,7 @@ class FlightControl(FileConfig.FileConfig):
         if alt > 0:
             self.DesiredAltitude = alt
         logger.debug("starting turn at %g", self._sensors.Heading())
+        self._pitch_mode = None     # None == normal, otherwise "controlled_descent"
 
     def Turn(self, degrees, roll_angle=0, alt=0):
         logger.debug ("Flight control turning %g, roll %g, alt %d", degrees, roll_angle, alt)
@@ -433,9 +469,11 @@ class FlightControl(FileConfig.FileConfig):
         turn_start = self._sensors.Heading()
         self.DesiredTrueHeading = turn_start + degrees
         logger.debug("starting turn at %g", turn_start)
+        self._pitch_mode = None     # None == normal, otherwise "controlled_descent"
 
     def Swoop(self, low_alt, high_alt, min_airspeed=0):
         current_altitude = self._sensors.Altitude()
+        self._airspeed_achievement_minutes = self.AirSpeedAchievementMinutes
         if current_altitude <= low_alt:
             self.DesiredAltitude = high_alt
         else:
@@ -457,22 +495,33 @@ class FlightControl(FileConfig.FileConfig):
             self._swoop_min_as = min_airspeed
         else:
             self._swoop_min_as = self.MinClimbAirSpeed
+        self._pitch_mode = None     # None == normal, otherwise "controlled_descent"
 
-    def FlyTo(self, coordinate, desired_altitude=0, desired_airspeed=0):
+    def FlyTo(self, coordinate, desired_altitude=0, desired_airspeed=0, rounding=True):
         self.DesiredCourse = [self._sensors.Position(), coordinate]
         if desired_altitude:
             self.DesiredAltitude = desired_altitude
         if desired_airspeed:
             self.DesiredAirSpeed = desired_airspeed
+            self._airspeed_achievement_minutes = self.AirSpeedAchievementMinutes
         self._flight_mode = SUBMODE_COURSE
+        self._pitch_mode = None     # None == normal, otherwise "controlled_descent"
+        self._course_rounding = rounding
+        logger.debug("Flight Control flying to (%g,%g)", coordinate[0], coordinate[1])
 
-    def FlyCourse(self, course, desired_altitude=0, desired_airspeed=0):
+    def FlyCourse(self, course, desired_altitude=0, desired_airspeed=0, rounding=True):
         self.DesiredCourse = course
         if desired_altitude:
             self.DesiredAltitude = desired_altitude
         if desired_airspeed:
             self.DesiredAirSpeed = desired_airspeed
+            self._airspeed_achievement_minutes = self.AirSpeedAchievementMinutes
         self._flight_mode = SUBMODE_COURSE
+        self._pitch_mode = None     # None == normal, otherwise "controlled_descent"
+        self._course_rounding = rounding
+        logger.debug("Flight Control flying course (%g,%g) to (%g,%g)",
+                course[0][0], course[0][1],
+                course[1][0], course[1][1])
 
     def StraightAndLevel(self, desired_altitude=0, desired_airspeed=0, desired_heading = None):
         self._flight_mode = SUBMODE_STRAIGHT
@@ -482,10 +531,36 @@ class FlightControl(FileConfig.FileConfig):
             self.DesiredAltitude = self._sensors.Altitude()
         if desired_airspeed:
             self.DesiredAirSpeed = desired_airspeed
+            self._airspeed_achievement_minutes = self.AirSpeedAchievementMinutes
         if desired_heading == None:
             self.DesiredTrueHeading = self._sensors.TrueHeading()
         else:
             self.DesiredTrueHeading = desired_heading
+        self._pitch_mode = None     # None == normal, otherwise "controlled_descent"
+        logger.debug ("Flight Control Straight and Level at %g feet, airspeed=%g, heading%g",
+                self.DesiredAltitude, self.DesiredAirSpeed, self.DesiredTrueHeading)
+
+    def DescentCourse(self, course, desired_altitude, desired_airspeed=0, rounding=True):
+        self.DesiredCourse = course
+        self.DesiredAltitude = desired_altitude
+        if desired_airspeed:
+            self.DesiredAirSpeed = desired_airspeed
+        self._flight_mode = SUBMODE_COURSE
+        self._pitch_mode = "controlled_descent"
+        self._course_rounding = rounding
+        self._descent_starting_altitude = self.CurrentAltitude
+        full_course = [self.CurrentPosition, course[1]]
+        _,self._descent_distance, self._rel_lng = util.TrueHeadingAndDistance (full_course)
+        hours_to_dest = self._descent_distance / self.DesiredAirSpeed
+        self._airspeed_achievement_minutes = hours_to_dest * 60.0
+        full_descent =  self.DesiredAltitude - self._descent_starting_altitude
+        self._nominal_descent_rate = full_descent / (hours_to_dest * 60.0)
+        logger.debug("Starting Descent course: distance=%g, descent of %g feet, nominal rate = %g",
+                self._descent_distance, full_descent,
+                self._nominal_descent_rate)
+
+    def SetCallback(self, cb):
+        self._callback = cb
 
     def PIDOptimizationStart(self, which_pid, params, scoring_object, outfile):
         self._in_pid_optimization = which_pid
@@ -580,8 +655,12 @@ class FlightControl(FileConfig.FileConfig):
         # turn_diameter = turn_circumference / (2 * PI)
         # turn_radius = turn_diameter / 2
 
-        turn_radius = (360.0 * (self.DesiredAirSpeed / 60.0) / self.TurnRate) / (4 * util.M_PI)
+        if self._course_rounding:
+            turn_radius = (360.0 * (self.DesiredAirSpeed / 60.0) / self.TurnRate) / (4 * util.M_PI)
+        else:
+            turn_radius = 0
         if y >= -turn_radius / 60.0:
+            logger.debug("Flight Control completed course")
             return True
         else:
             return False
