@@ -64,6 +64,7 @@ class TakeoffControl(FileConfig.FileConfig):
         self.InitialRudder = .4
         self.TakeoffFlaps = 0.2
         self.CompletionAGL = 20.0
+        self.PositiveLiftPowerSetting = 1.0
 
         self.TurnRate = 10.0     # Degrees per minute
         self.InterceptMultiplier = 20.0
@@ -155,6 +156,8 @@ class TakeoffControl(FileConfig.FileConfig):
                 self._RudderPID.SetMode (PID.MANUAL, self.CurrentHeadingRate, self._rudder_control.GetCurrent())
                 self._flight_mode = SUBMODE_POSITIVE_CLIMB
                 logger.debug ("Takeoff looking for positive climb")
+            if self._sensors.AGL() > 50.0:
+                self._throttle_control.Set(self.PositiveLiftPowerSetting)
         elif self._flight_mode == SUBMODE_POSITIVE_CLIMB:
             if self.CurrentClimbRate >= 100.0 and self._sensors.AGL() > self.CompletionAGL:
                 if self._gear_control != None:
@@ -166,6 +169,8 @@ class TakeoffControl(FileConfig.FileConfig):
                         self._flight_mode = SUBMODE_FLAPS_UP
                     else:
                         self.get_next_directive()
+            elif self._sensors.AGL() > 50.0:
+                self._throttle_control.Set(self.PositiveLiftPowerSetting)
         elif self._flight_mode == SUBMODE_GEAR_UP:
             if self._sensors.GearUpLocked():
                 self._flight_mode = SUBMODE_FLAPS_UP

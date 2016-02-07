@@ -419,7 +419,7 @@ class Airplane(FileConfig.FileConfig):
                    outer_marker, outer_altitude, middle_marker, right_pattern, pattern_alt)
     
     def CompleteRunway(self):
-        self.FlyCourse(self.ApproachEndpoints, self.RunwayAltitude+1000, rounding=False)
+        self.FlyCourse(self.ApproachEndpoints, self.RunwayAltitude+1000, self.StallSpeed * 1.5, rounding=False)
 
     def PickupFromPlan(self, step_number):
         if step_number < 0:

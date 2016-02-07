@@ -59,6 +59,7 @@ class LandingControl(FileConfig.FileConfig):
         self.FlarePitchCurve = None # degrees pitch up for feet agl
         self.RollCurve = None       # degrees roll for feet of centerline
         self.InitialFlaps = .2
+        self.FlarePowerSetting = 0.05
 
         # Operational properties
         self._attitude_control = att_cont
@@ -281,7 +282,7 @@ class LandingControl(FileConfig.FileConfig):
             side /= util.NAUT_MILES_PER_METER
             side *= util.FEET_METER
             roll = util.rate_curve(side, self.RollCurve)
-            logger.debug("Flaring with side error=%g, roll=%g, agl=%g, pitch=%g", side, roll, agl,
+            logger.log(7, "Flaring with side error=%g, roll=%g, agl=%g, pitch=%g", side, roll, agl,
                     pitch)
             self._attitude_control.UpdateControls(pitch, roll, heading)
             if self._sensors.AirSpeed() < self._callback.StallSpeed * .4:
@@ -297,7 +298,7 @@ class LandingControl(FileConfig.FileConfig):
             self._flight_control.Stop()
             self._flight_mode = SUBMODE_FLARE
             self._attitude_control.StartFlight(yaw_mode = 'side_slip')
-            self._throttle_control.Set(.05)
+            self._throttle_control.Set(self.FlarePowerSetting)
         else:
             func,args = self._approach_directives[self._approach_index]
             func (*args)
