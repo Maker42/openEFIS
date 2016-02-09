@@ -73,6 +73,8 @@ class AttitudeControl(FileConfig.FileConfig):
         self.YawPIDTuningParams = list()
         self.RollRatePIDTuningParams = list()
 
+        self.AttitudeAchievementTime = 2.0
+
         self.RollRateCurve = [(0.0, 0.0), (3.0, 1.0), (10.0, 10.0)] 
 
         self.RudderAileronRatio = .2
@@ -193,7 +195,7 @@ class AttitudeControl(FileConfig.FileConfig):
             self._journal_file.write(str(ms))
         if self._in_pid_optimization != "roll":
             desired_roll_rate = self.get_roll_rate()
-            self._rollRatePID.SetSetPoint (desired_roll_rate)
+            self._rollRatePID.SetSetPoint (desired_roll_rate, self.AttitudeAchievementTime)
         self.CurrentRollRate = self._sensors.RollRate()
         self.aileron_deflection = self._rollRatePID.Compute (self.CurrentRollRate, ms)
         self._aileron_control.Set (self.aileron_deflection)
@@ -204,7 +206,7 @@ class AttitudeControl(FileConfig.FileConfig):
 
         if self._in_pid_optimization != "pitch":
             desired_pitch = self.DesiredPitch + self.CurrentRoll * self.RollPitchRatio
-            self._pitchPID.SetSetPoint (desired_pitch)
+            self._pitchPID.SetSetPoint (desired_pitch, self.AttitudeAchievementTime)
         elevator_value = self._pitchPID.Compute(self.CurrentPitch, ms)
         self._elevator_control.Set (elevator_value)
         if self._in_pid_optimization == "pitch":
@@ -214,7 +216,7 @@ class AttitudeControl(FileConfig.FileConfig):
 
         if self.DesiredYaw != None:
             if self._in_pid_optimization != "yaw":
-                self._yawPID.SetSetPoint (self.DesiredYaw)
+                self._yawPID.SetSetPoint (self.DesiredYaw, self.AttitudeAchievementTime)
             if self._yaw_mode == None:
                 rudder_value = self._yawPID.Compute(self.CurrentYaw, ms) + self.rudder_offset()
                 if self._in_pid_optimization == "yaw":
@@ -226,7 +228,7 @@ class AttitudeControl(FileConfig.FileConfig):
                 elif input_val - self.DesiredYaw > 180:
                     input_val -= 360
                 rudder_value = self._yawPID.Compute(input_val, ms)
-                logger.debug ("Side slip: %g/%g ==> %g", self._sensors.TrueHeading(),
+                logger.log (5, "Side slip: %g/%g ==> %g", self._sensors.TrueHeading(),
                         self.DesiredYaw, rudder_value)
             self._rudder_control.Set (rudder_value)
             if self._journal_file and self.JournalYaw:

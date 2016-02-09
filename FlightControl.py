@@ -208,13 +208,17 @@ class FlightControl(FileConfig.FileConfig):
             _,remaining_distance,self._rel_lng = util.TrueHeadingAndDistance(remaining_course,
                     rel_lng=self._rel_lng)
             fraction_remaining = remaining_distance / self._descent_distance 
-            desired_altitude = (self.DesiredAltitude * fraction_remaining +
-                                self._descent_starting_altitude * (1 - fraction_remaining))
+            desired_altitude = (self.DesiredAltitude * (1 - fraction_remaining) +
+                                self._descent_starting_altitude * fraction_remaining)
             altitude_error = self.CurrentAltitude - desired_altitude
             self._desired_climb_rate = util.rate_curve (altitude_error, self.DescentCurve)
             self._desired_climb_rate += self._nominal_descent_rate
             self._climbPitchPID.SetSetPoint (self._desired_climb_rate, self.ClimbRateAchievementSeconds)
+            logger.log (5, "Descent Rate %g/%g--> %g", self.CurrentAltitude, desired_altitude, 
+                    self._desired_climb_rate)
             ret = self._climbPitchPID.Compute (self.CurrentClimbRate, ms)
+            logger.log (5, "Descent Pitch %g/%g--> %g", self.CurrentClimbRate, self._desired_climb_rate, 
+                    ret)
         return ret
 
     def UpdateAirspeedPitch(self, ms):
@@ -240,8 +244,8 @@ class FlightControl(FileConfig.FileConfig):
         return desired_pitch
 
     def UpdateClimbratePitch(self, ms):
-        alt_err = abs(self.DesiredAltitude - self.CurrentAltitude)
-        if alt_err < self.ClimbPitchCurve[0][0]:
+        alt_err = self.DesiredAltitude - self.CurrentAltitude
+        if abs(alt_err) < self.ClimbPitchCurve[0][0]:
             if self._climbPitchPID.GetMode() != PID.AUTOMATIC:
                 self._climbPitchPID.SetMode (PID.AUTOMATIC,
                                             self.CurrentClimbRate, self._desired_pitch)
@@ -519,9 +523,9 @@ class FlightControl(FileConfig.FileConfig):
         self._flight_mode = SUBMODE_COURSE
         self._pitch_mode = None     # None == normal, otherwise "controlled_descent"
         self._course_rounding = rounding
-        logger.debug("Flight Control flying course (%g,%g) to (%g,%g)",
+        logger.debug("Flight Control flying course (%g,%g) to (%g,%g), altitude=%g, airspeed=%g",
                 course[0][0], course[0][1],
-                course[1][0], course[1][1])
+                course[1][0], course[1][1], self.DesiredAltitude, self.DesiredAirSpeed)
 
     def StraightAndLevel(self, desired_altitude=0, desired_airspeed=0, desired_heading = None):
         self._flight_mode = SUBMODE_STRAIGHT
