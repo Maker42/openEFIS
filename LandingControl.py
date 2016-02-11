@@ -29,7 +29,6 @@ class LandingControl(FileConfig.FileConfig):
                  flap_control, sensors, callback):
         # Dynamic Input parameters
         self.RunwayEndpoints = None
-        self.DescentAngle = 2.0
         self.PatternAltitude = 0
         self.RunwayAltitude = 0
         self._desired_climb_rate = 0
@@ -56,13 +55,17 @@ class LandingControl(FileConfig.FileConfig):
         self.PatternAirSpeed = 0
         self.FinalAirSpeed = 0
         self.ShortFinalAirSpeed = 0
+        self.DescentAngle = 3.0
         self.FlarePitchCurve = None # degrees pitch up for feet agl
         self.InitialFlaps = .2
-        self.FlarePowerSetting = 0.05
+        self.FlarePowerCurve = [(0.4, 0.0), (0.6, 0.05)]
         self.SideSlipLimits = (-5.0, 5.0)
         self.SideSlipCurve = [(0.0, 0.0), (20.0, -10.0), (100.0, -100.0)]
         self.SlipPIDSampleTime = 10
         self.SlipPIDTuningParams = None
+        self.ThresholdAgl = 50.0
+        self.MaxPitchChangePerSample = 2.0
+        self.PitchPIDSampleTime = 100
 
         # Operational properties
         self._SlipPID = None
@@ -76,6 +79,7 @@ class LandingControl(FileConfig.FileConfig):
         self._flap_control = flap_control
         self._approach_directives = list()
         self._approach_index = 0
+        self._last_update_time = 0
 
         FileConfig.FileConfig.__init__(self)
 
@@ -105,7 +109,7 @@ class LandingControl(FileConfig.FileConfig):
         self._approach_index = 0
 
     def Land(self, runway_points, runway_alt, outer_marker=None, outer_altitude=0,
-                   middle_marker=None, right_pattern=False, pattern_alt=0):
+                   middle_marker=None, right_pattern=False, pattern_alt=0, threshold_agl = -9999):
         self._flight_control.Start(self._last_desired_pitch)
         self._flight_mode = SUBMODE_APPROACH
         # If given an outer and middle marker, fly to the outer marker and approach from there.
@@ -115,7 +119,9 @@ class LandingControl(FileConfig.FileConfig):
         self._right_pattern = right_pattern
         self.RunwayEndpoints = runway_points
         self.RunwayAltitude = runway_alt
-        flare_altitude = self.RunwayAltitude+100
+        if threshold_agl != -9999:
+            self.ThresholdAgl = threshold_agl
+        flare_altitude = self.RunwayAltitude+self.ThresholdAgl
         self._flight_control.SetCallback (self)
         if pattern_alt > 0:
             self.PatternAltitude = pattern_alt
@@ -132,6 +138,8 @@ class LandingControl(FileConfig.FileConfig):
                        / (4 * util.M_PI))
         short_final_point = util.AddPosition (self.RunwayEndpoints[0],
                 turn_radius, heading - 180)
+        short_final_altitude = turn_radius * math.sin (self.DescentAngle * util.RAD_DEG) * util.FEET_NM
+        short_final_altitude += flare_altitude
         if outer_marker != None and middle_marker != None:
             logger.debug("Making an instrument approach landing. Flying to outer marker")
             approach_course = [outer_marker, middle_marker]
@@ -183,23 +191,24 @@ class LandingControl(FileConfig.FileConfig):
 
             downwind_point = util.AddPosition(self.RunwayEndpoints[1],
                     turn_radius * 2.2, pattern_offset_heading)
+            descent_distance = turn_radius * 2.2
+            base_distance = turn_radius * 2.2
+            total_approach_distance = descent_distance * 2 + base_distance
             descent_point = util.AddPosition (self.RunwayEndpoints[0],
-                    turn_radius * 2.2, pattern_offset_heading)
-            _,dist,__ = util.TrueHeadingAndDistance ([downwind_point, descent_point])
+                    base_distance, pattern_offset_heading)
             base_point = util.AddPosition (descent_point,
-                    turn_radius * 2.2, heading - 180)
-            _,distadd,__ = util.TrueHeadingAndDistance ([downwind_point, base_point])
-            dist += distadd
+                    base_distance, heading - 180)
             outer_base_point = util.AddPosition (base_point,
                     turn_radius * 4.2, pattern_offset_heading)
             final_point = util.AddPosition (self.RunwayEndpoints[0],
                     turn_radius * 2.2, heading - 180)
-            _,distadd,__ = util.TrueHeadingAndDistance ([base_point, final_point])
-            dist += distadd
-            _,distadd,__ = util.TrueHeadingAndDistance ([final_point, self.RunwayEndpoints[0]])
-            dist += distadd
-            pattern_alt_nm = dist * math.sin(self.DescentAngle * util.RAD_DEG)
-            self.PatternAltitude = pattern_alt_nm * util.FEET_METER / util.NAUT_MILES_PER_METER + self.RunwayAltitude
+
+            pattern_alt_nm = total_approach_distance * math.sin(self.DescentAngle * util.RAD_DEG)
+            self.PatternAltitude = pattern_alt_nm * util.FEET_NM + flare_altitude
+            final_turn_altitude = descent_distance * math.sin(self.DescentAngle * util.RAD_DEG)
+            final_turn_altitude *= util.FEET_NM
+            base_turn_altitude = self.PatternAltitude - final_turn_altitude
+            final_turn_altitude += flare_altitude
             logger.debug ("Pattern altitude %g feet", self.PatternAltitude)
             outer_final_point = util.AddPosition (final_point,
                     turn_radius * 4.2, heading - 180)
@@ -209,7 +218,6 @@ class LandingControl(FileConfig.FileConfig):
             else:
                 altitude = self.PatternAltitude
 
-            base_turn_altitude = self.PatternAltitude * .6 + flare_altitude * .4
             include_downwind = False
             include_base = False
 
@@ -261,7 +269,6 @@ class LandingControl(FileConfig.FileConfig):
                     (descent_downwind, base_turn_altitude, descent_airspeed, True)))
             if include_base:
                 base_course = [base_point, final_point]
-                final_turn_altitude = self.PatternAltitude * .4 + flare_altitude * .6
                 descent_airspeed = self.PatternAirSpeed * .5 + self.FinalAirSpeed * .5
                 self._approach_directives.append ((self._flight_control.DescentCourse,
                     (base_course, final_turn_altitude, descent_airspeed, True)))
@@ -269,7 +276,7 @@ class LandingControl(FileConfig.FileConfig):
             final_course = [final_point, short_final_point]
 
         self._approach_directives.append ((self._flight_control.DescentCourse,
-            (final_course, flare_altitude+200, self.FinalAirSpeed, False)))
+            (final_course, short_final_altitude, self.FinalAirSpeed, False)))
         self._approach_directives.append ((self.FullFlaps, tuple()))
         final_course = [short_final_point, self.RunwayEndpoints[0]]
         self._approach_directives.append ((self._flight_control.DescentCourse,
@@ -280,33 +287,56 @@ class LandingControl(FileConfig.FileConfig):
     def Stop(self):
         self._SlipPID.SetMode (PID.MANUAL, 0,0)
         self._slip_history = list()
-        self._flight_control.StopFlight()
+        self._flight_control.Stop()
         self._flight_control.SetCallback (self._callback)
         if self._journal_file:
             self._journal_file.close()
 
     def Update(self):
+        agl = self._sensors.AGL()
+        if agl < 100 and self._flight_mode != SUBMODE_FLARE:
+            self._begin_flare()
         if self._flight_mode == SUBMODE_APPROACH:
             self._flight_control.Update()
         elif self._flight_mode == SUBMODE_FLARE:
-            agl = self._sensors.AGL()
             ms = util.millis(self._sensors.Time())
-            pitch = util.rate_curve(agl, self.FlarePitchCurve)
+
+            # Compute Pitch
+            desired_pitch = util.rate_curve(agl, self.FlarePitchCurve)
+            pitch_diff = desired_pitch - self._last_pitch
+            time_diff = ms - self._last_update_time
+            if abs(pitch_diff) > self.MaxPitchChangePerSample * time_diff / self.PitchPIDSampleTime:
+                pitch_diff = self.MaxPitchChangePerSample * time_diff / self.PitchPIDSampleTime
+                if desired_pitch < self._last_pitch:
+                    pitch_diff *= -1
+                self._last_pitch += pitch_diff
+            else:
+                self._last_pitch = desired_pitch
+            self._last_update_time = ms
+
+            # Compute Roll
             side, forward, heading, heading_to_dest = util.CourseDeviation(self._sensors.Position(),
                     self.RunwayEndpoints, self.rel_lng)
-            side /= util.NAUT_MILES_PER_METER
-            side *= util.FEET_METER
-            shift_rate = side - self._last_side_error
-            shift_rate *= 100 # System sample time
+            side *= util.FEET_NM
+            ground_track = self._sensors.GroundTrack()
+            ground_speed = self._sensors.GroundSpeed()
+            relative_ground_track = ground_track - heading
+            if relative_ground_track > 180:
+                relative_ground_track -= 360
+            elif relative_ground_track < -180:
+                relative_ground_track += 360
+            shift_rate = ground_speed * math.sin(relative_ground_track * util.RAD_DEG)
+            shift_rate *= util.FEET_NM / (3600.0) # nm / hour --> feet / s
             shift_rate = util.LowPassFilter (shift_rate, self._slip_history)
             self._last_side_error = side
             desired_shift_rate = util.rate_curve (side, self.SideSlipCurve)
             self._SlipPID.SetSetPoint (desired_shift_rate, 2.0)
             roll = self._SlipPID.Compute (shift_rate, ms)
-            logger.log(7, "Flaring with side error=%g, shift_rate=%g/%g, roll=%g, agl=%g, pitch=%g",
+            self._throttle_control.Set(util.rate_curve (agl, self.FlarePowerCurve))
+            logger.log(10, "Flaring with side error=%g, shift_rate=%g/%g, roll=%g, agl=%g, pitch=%g/%g",
                     side, shift_rate, desired_shift_rate, roll, agl,
-                    pitch)
-            self._attitude_control.UpdateControls(pitch, roll, heading)
+                    self._last_pitch, desired_pitch)
+            self._attitude_control.UpdateControls(self._last_pitch, roll, heading)
             if self._sensors.AirSpeed() < self._callback.StallSpeed * .4:
                 self._throttle_control.Set(0.0)
                 # Landed
@@ -315,17 +345,22 @@ class LandingControl(FileConfig.FileConfig):
     def GetNextDirective(self):
         self._approach_index += 1
         if self._approach_index >= len(self._approach_directives):
-            # TODO: Make go-around decision
-            self._flight_control.SetCallback (self._callback)
-            self._flight_control.Stop()
-            self._flight_mode = SUBMODE_FLARE
-            self._attitude_control.StartFlight(yaw_mode = 'side_slip')
-            self._throttle_control.Set(self.FlarePowerSetting)
-            self._SlipPID.SetMode (PID.AUTOMATIC, 0, 0)
-            self._SlipPID.SetSetPoint (0.0, 5.0)
+            self._begin_flare()
         else:
             func,args = self._approach_directives[self._approach_index]
             func (*args)
+
+    def _begin_flare(self):
+        # TODO: Make go-around decision
+        logger.info ("Beginning touchdown flare")
+        self._flight_control.SetCallback (self._callback)
+        self._flight_control.Stop()
+        self._flight_mode = SUBMODE_FLARE
+        self._attitude_control.StartFlight(yaw_mode = 'side_slip')
+        self._SlipPID.SetMode (PID.AUTOMATIC, 0, 0)
+        self._SlipPID.SetSetPoint (0.0, 5.0)
+        self._last_pitch = self._sensors.Pitch()
+        self._last_update_time = util.millis(self._sensors.Time())
 
     def DropGearAndFlaps(self):
         logger.info("Landing Control deploying landing gear and flaps")

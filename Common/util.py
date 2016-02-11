@@ -29,6 +29,7 @@ G_IN_KNOTS_PER_SEC = 9.98 * NAUT_MILES_PER_METER * 3600.0
 RAD_DEG = M_PI / 180.0
 DEG_RAD = 180.0 / M_PI
 FEET_METER = 1.0/.3048
+FEET_NM = FEET_METER / NAUT_MILES_PER_METER
 
 def read_cont_expr (first_args, lines):
     ret = None
