@@ -358,7 +358,7 @@ class Airplane(FileConfig.FileConfig):
         self._flight_control.TurnTo (degrees, roll, self.DesiredAltitude)
         return ret
 
-    def Turn(self, degrees, roll, desired_altitude=0):
+    def Turn(self, degrees, roll=0, desired_altitude=0):
         ret = "Turning %g degrees with roll %g at altitude %d"%(degrees, roll, desired_altitude)
         logger.info (ret)
         assert (self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN)
@@ -573,6 +573,8 @@ class Airplane(FileConfig.FileConfig):
                 "PIDOptimizationStart", "PIDOptimizationNext", "StraightAndLevel", "FlyCourse",
                 "CompleteRunway"]
         logger.info ("Executing command %s", command)
+        if command.startswith('#'):
+            return True
         for c in nonblocking_commands:
             if command.startswith (c):
                 eval ("self." + command)

@@ -109,13 +109,12 @@ class TakeoffControl(FileConfig.FileConfig):
     def Takeoff(self, approach_endpoints, soft_field):
         self._flight_mode = SUBMODE_ACCELERATE
         self._abort = False
+        self._last_pitch = self._sensors.Pitch()
         if soft_field:
             self._desired_pitch = self.TakeoffPitch
-            self._last_pitch = self._sensors.Pitch()
             self._attitude_control.StartFlight()
         else:
-            self._desired_pitch = None
-            self._last_pitch = None
+            self._desired_pitch = self._last_pitch
         self._throttle_control.Set(1.0)
         logger.debug ("Throttle up")
         self.DesiredCourse = approach_endpoints

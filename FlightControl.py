@@ -446,6 +446,8 @@ class FlightControl(FileConfig.FileConfig):
                     heading_error += 360
         # heading rate change in degrees per second
         ret = util.rate_curve (heading_error, self.RollCurve)
+        #logger.debug ("compute_roll: %g/%g-->%g error -->%g roll", self._sensors.GroundTrack(),
+        #        intercept_heading, heading_error, ret)
         return ret
 
     def FollowCourse(self, course, alt):
@@ -470,7 +472,7 @@ class FlightControl(FileConfig.FileConfig):
         self._force_turn_direction = roll_angle
         if alt > 0:
             self.DesiredAltitude = alt
-        turn_start = self._sensors.Heading()
+        turn_start = self._sensors.GroundTrack()
         self.DesiredTrueHeading = turn_start + degrees
         logger.debug("starting turn at %g", turn_start)
         self._pitch_mode = None     # None == normal, otherwise "controlled_descent"
@@ -660,7 +662,7 @@ class FlightControl(FileConfig.FileConfig):
         # turn_radius = turn_diameter / 2
 
         if self._course_rounding:
-            turn_radius = (360.0 * (self.DesiredAirSpeed / 60.0) / self.TurnRate) / (4 * util.M_PI)
+            turn_radius = (360.0 * (self._sensors.GroundSpeed() / 60.0) / self.TurnRate) / (4 * util.M_PI)
         else:
             turn_radius = 0
         if y >= -turn_radius / 60.0:
