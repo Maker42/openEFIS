@@ -64,14 +64,7 @@ MAX_COURSE_HOP_LENGTH_DEG = 1.0/3.0
 MAX_COURSE_HOP_LENGTH_RAD = MAX_COURSE_HOP_LENGTH_DEG * M_PI/180.0
 
 def GetRelLng(lat1):
-    rel_lng_inc = Spatial.Polar(0.0,lat1,1.0).to3(robot_coordinates=False)
-    rel_lng = Spatial.Polar(MAX_COURSE_HOP_LENGTH_RAD,lat1,1.0).to3(robot_coordinates=False)
-    rel_lng.sub(rel_lng_inc)
-
-    rel_lat_inc = Spatial.Polar(0.0,lat1,1.0).to3(robot_coordinates=False)
-    rel_lat = Spatial.Polar(0.0,lat1+MAX_COURSE_HOP_LENGTH_RAD,1.0).to3(robot_coordinates=False)
-    rel_lat.sub(rel_lat_inc)
-    return rel_lng.norm() / rel_lat.norm()
+    return math.cos(lat1)
 
 def GetAdjustedPolarDeltas(course, rel_lng=0):
     dlng,dlat = get_polar_deltas(course)
