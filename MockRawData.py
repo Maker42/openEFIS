@@ -58,7 +58,6 @@ class MockRawData(MicroServerComs):
 
     def send_data(self, tm):
         if tm >= self.next_time:
-            p = bytes()
             values = self.get_next()
             for attrname,val in zip(self.output_values, values):
                 if val == 'time':

@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016  Garrett Herschleb
+# Copyright (C) 2015-2018  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -13,14 +13,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-import time, logging, asyncore
+import logging, asyncore
 
 import Common.FileConfig as FileConfig
 import Globals
 import Common.util as util
 
 import SenseControl, CommandControl
-import Xplane, SurfaceControl, AttitudeControl, FlightControl, AttitudeControlVTOL
+import Xplane, SurfaceControl, AttitudeControl, FlightControl, AttitudeControlVTOL, GroundControl
 import TakeoffControlVTOL, LandingControlVTOL, AttitudeVTOLEstimation
 import MiddleEngineTiltControl, VTOLYawControl, SolenoidControl, ThrottleControl
 import TakeoffControl, LandingControl
@@ -251,9 +251,6 @@ class Airplane(FileConfig.FileConfig):
         self._servo_controller = eval(' '.join(args[1:]))
         self._servo_controller.initialize(filelines)
 
-    def init_elevator_control(self, args, filelines):
-        self._elevator_control = eval(' '.join(args[1:]))
-
     def KnownAltitude(self, alt):
         self._sensors.KnownAltitude(alt)
 
@@ -402,7 +399,7 @@ class Airplane(FileConfig.FileConfig):
             if touchdown:
                 self.RunwayTouchdownPoint = touchdown
                 if end:
-                    self.ApproachEndpoints = [position, end]
+                    self.ApproachEndpoints = [self.RunwayTouchdownPoint, end]
                 else:
                     self.ApproachEndpoints = list()
             if length:
@@ -432,6 +429,8 @@ class Airplane(FileConfig.FileConfig):
         else:
             self._flight_plan_index = step_number -1
             self.SendNextCommand()
+            ret = "Starting plan from step %d"%step_number
+        return ret
 
     def Update(self):
         if self.has_crashed():

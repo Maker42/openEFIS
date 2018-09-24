@@ -1,4 +1,4 @@
-# Copyright (C) 2016  Garrett Herschleb
+# Copyright (C) 2016-2018  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-import time, logging, math
+import logging, math
 
 import PID
 import Common.FileConfig as FileConfig
@@ -116,10 +116,6 @@ class LandingControl(FileConfig.FileConfig):
         self._last_desired_pitch = last_desired_pitch
         self._approach_directives = list()
         self._approach_index = 0
-
-    def Stop(self):
-        self._flarePitchPID.SetMode (PID.MANUAL, 0, self._last_pitch)
-        return self._last_pitch
 
     def Land(self, runway_points, runway_alt, outer_marker=None, outer_altitude=0,
                    middle_marker=None, right_pattern=False, pattern_alt=0, threshold_agl = -9999):

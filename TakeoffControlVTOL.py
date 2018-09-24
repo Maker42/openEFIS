@@ -1,4 +1,4 @@
-# Copyright (C) 2015  Garrett Herschleb
+# Copyright (C) 2015-2018  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -13,9 +13,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-import time, logging, math, copy
+import logging
 
-import PID
 import Common.FileConfig as FileConfig
 import Globals
 import Common.util as util
@@ -261,11 +260,10 @@ class TakeoffControlVTOL(FileConfig.FileConfig):
                 self.PIDOptimizationStop()
                 return self._pid_optimization_scoring.GetScore()
             self._pid_optimization_goal = step.input_value
-            raise RuntimeError ("Unknown PID optimization target: %s"%which_pid)
+            raise RuntimeError ("Unknown PID optimization target")
             return step
 
     def PIDOptimizationStop(self):
-        raise RuntimeError ("Unknown PID optimization target: %s"%which_pid)
         self._in_pid_optimization = ""
         if self._journal_file:
             self._journal_file.close()

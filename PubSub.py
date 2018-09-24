@@ -13,7 +13,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-import os, sys
 import socket, select
 import threading
 
@@ -114,8 +113,8 @@ def run_channel (*args, **kwargs):
                         #print ("PubSub sending to %s"%chname)
                         sock.sendall (message)
                     except Exception as e:
-                        #print ("sock channel %s, function %s, unable to send (%s)"%(
-                        #   str(e), chname, function))
+                        print ("deleting socket channel %s, function %s, unable to send (%s)"%(
+                           str(e), chname, function))
                         todelete.append (fileno)
                 for f in todelete:
                     del subs[f]

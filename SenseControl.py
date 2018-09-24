@@ -1,4 +1,4 @@
-# Copyright (C) 2015  Garrett Herschleb
+# Copyright (C) 2015-2018  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,8 +15,7 @@
 
 import time, math, logging
 
-import Globals
-#import SenseControlRemote
+import SenseControlRemote
 
 logger=logging.getLogger(__name__)
 
@@ -50,7 +49,7 @@ class Control:
             throttle_values = [value for i in range(nthrottles)]
 
         args = tuple(throttle_values)
-        scmaster.SetThrottles (*throttle_values)
+        scmaster.SetThrottles (*args)
         logger.log (3, "Setting throttles to %s", str(throttles))
 
     def SetThrottleTable(self, table):

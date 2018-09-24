@@ -1,4 +1,4 @@
-# Copyright (C) 2015  Garrett Herschleb
+# Copyright (C) 2015-2018  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -19,19 +19,8 @@ import sys
 import socket, logging, asyncore
 import argparse
 
-if '__main__' == __name__:
-    for p in sys.path:
-        if 'Common' in p:
-            break
-    else:
-        sys.path.append (os.path.join ('Common'))
-        sys.path.append (os.path.join ('Test'))
-else:
+if '__main__' != __name__:
     logger=logging.getLogger(__name__)
-
-import Globals
-
-import Common.util as util
 
 command_queue = list()
 
@@ -94,7 +83,7 @@ class CommandServer(asyncore.dispatcher):
         if pair is not None:
             sock, addr = pair
             print ('Incoming connection from %s' % repr(addr))
-            handler = command_request_handler(sock, self._command_queue)
+            self.handler = command_request_handler(sock, self._command_queue)
 
     def GetNextDirective(self):
         ret = None

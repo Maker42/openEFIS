@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016  Garrett Herschleb
+# Copyright (C) 2015-2018  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-import time, logging
+import logging
 
 import PID
 import Common.FileConfig as FileConfig
@@ -277,20 +277,9 @@ class FlightControl(FileConfig.FileConfig):
     def _set_pitch_pid_limits(self, absolute_limits, pid, invert=False):
         amn,amx = self._find_pitch_limits(absolute_limits)
         if invert:
-            multiplier = -1
             temp = -amx
             amx = -amn
             amn = temp
-        else:
-            multiplier = 1
-        #rmn = multiplier * self._desired_pitch - self.MaxPitchChangePerSample
-        #rmx = multiplier * self._desired_pitch + self.MaxPitchChangePerSample
-        #if rmn < amn:
-        #    rmn = amn
-        #if rmx > amx:
-        #    rmx = amx
-        #if rmn > rmx:
-        #    rmn = rmx - 1.0
         rmn = amn
         rmx = amx
         logger.log (5, "pitch limits are %g,%g", rmn, rmx)
@@ -633,7 +622,7 @@ class FlightControl(FileConfig.FileConfig):
             elif self._in_pid_optimization == "throttle":
                 self._throttlePID.SetSetPoint (self._pid_optimization_goal, self._airspeed_achievement_minutes * 60.0)
             else:
-                raise RuntimeError ("Unknown PID optimization target: %s"%which_pid)
+                raise RuntimeError ("Unknown PID optimization target")
             return step
 
     def PIDOptimizationStop(self):
@@ -647,7 +636,7 @@ class FlightControl(FileConfig.FileConfig):
             kp,ki,kd = self.ThrottlePIDTuningParams
             self._throttlePID.SetTunings (kp,ki,kd)
         else:
-            raise RuntimeError ("Unknown PID optimization target: %s"%which_pid)
+            raise RuntimeError ("Unknown PID optimization target")
         self._in_pid_optimization = ""
         if self._journal_file:
             self._journal_file.close()

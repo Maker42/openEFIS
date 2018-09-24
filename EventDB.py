@@ -18,7 +18,6 @@ import sys
 
 import psycopg2
 
-import Globals
 from MicroServerComs import MicroServerComs
 
 class EventDB(MicroServerComs):

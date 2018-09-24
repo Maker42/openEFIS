@@ -1,4 +1,4 @@
-# Copyright (C) 2015  Garrett Herschleb
+# Copyright (C) 2015-2018  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -69,9 +69,6 @@ class XplaneControl:
         for sz in set_zero:
             szc = self.dref_struct_preamble + self.dref_struct_body.pack(0.0, sz)
             self.sock.sendto (szc, (self.xplane_host, self.xplane_port))
-
-    def initialize(self, filelines):
-        pass
 
     def SetThrottleTable(self, table):
         self._throttle_table = table

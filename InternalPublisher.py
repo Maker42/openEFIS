@@ -15,10 +15,6 @@
 
 import select
 
-import yaml
-
-from PubSub import MAX_DATA_SIZE, CONFIG_FILE
-
 TheInternalPublisher = None
 
 class InternalPublisher:

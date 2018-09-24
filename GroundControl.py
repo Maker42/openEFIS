@@ -1,4 +1,4 @@
-# Copyright (C) 2015  Garrett Herschleb
+# Copyright (C) 2015-2018  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -13,12 +13,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-import time
+from Common.FileConfig import FileConfig
+import Common.util as util
 
 import PID
 
 class GroundControl(FileConfig):
-    def __init__(self):
+    def __init__(self, throttle_control, sensors, callback):
+        self._callback = callback
+        self._sensors = sensors
         self.DesiredHeading = 0
         self.DesiredGroundSpeed = 0
 
@@ -47,7 +50,8 @@ class GroundControl(FileConfig):
         self.InitalizeFromFileLines(filelines)
 
         kp,ki,kd = self.GetTunings (self.RudderPIDTuningParams)
-        self._yawPID = PID.PID(kp, ki, kd, PID.DIRECT, millis())
+        ms = util.millis(self._sensors.Time())
+        self._yawPID = PID.PID(kp, ki, kd, PID.DIRECT, ms)
         mn,mx = self.RudderPIDLimits
         self._yawPID.SetOutputLimits (mn, mx)
 
@@ -69,7 +73,7 @@ class GroundControl(FileConfig):
 
     def UpdateControls (self, desired_yaw):
         self.DesiredYaw = desired_yaw
-        ms = millis()
+        ms = util.millis(self._sensors.Time())
 
         self._yawPID.SetSetPoint (self.DesiredYaw)
         self.rudder_control.Set (self._yawPID.Compute(self.CurrentYaw, ms))

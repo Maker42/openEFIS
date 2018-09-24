@@ -41,7 +41,7 @@ from GroundVector import GroundVector
 from ClimbRateEstimate import ClimbRateEstimate
 import InternalPublisher
 import MicroServerComs
-from PubSub import MAX_DATA_SIZE, CONFIG_FILE
+from PubSub import CONFIG_FILE
 
 def run_service(so):
     so.listen()

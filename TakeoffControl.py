@@ -1,4 +1,4 @@
-# Copyright (C) 2016  Garrett Herschleb
+# Copyright (C) 2016-2018  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-import time, logging, math
+import logging
 
 import PID
 import Common.FileConfig as FileConfig
@@ -268,7 +268,7 @@ class TakeoffControl(FileConfig.FileConfig):
             elif self._in_pid_optimization == "throttle":
                 self._throttlePID.SetSetPoint (self._pid_optimization_goal)
             else:
-                raise RuntimeError ("Unknown PID optimization target: %s"%which_pid)
+                raise RuntimeError ("Unknown PID optimization target")
             return step
 
     def PIDOptimizationStop(self):
@@ -282,7 +282,7 @@ class TakeoffControl(FileConfig.FileConfig):
             kp,ki,kd = self.ThrottlePIDTuningParams
             self._throttlePID.SetTunings (kp,ki,kd)
         else:
-            raise RuntimeError ("Unknown PID optimization target: %s"%which_pid)
+            raise RuntimeError ("Unknown PID optimization target")
         self._in_pid_optimization = ""
         if self._journal_file:
             self._journal_file.close()

@@ -13,10 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-import math
-
 import Globals
-import Common.util as util
 from MicroServerComs import MicroServerComs
 
 class Roll(MicroServerComs):
