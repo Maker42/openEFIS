@@ -67,7 +67,7 @@ if '__main__' == __name__:
             os.environ['HOME'] = '/'
 
 import Airplane, Globals
-import PIDOptimizer
+import PIDOptimizer, Optimizer
 import UnitTestFixture
 
 if '__main__' == __name__:
@@ -131,6 +131,9 @@ if '__main__' == __name__:
             file.close()
             pid_scoring = PIDOptimizer.PIDScoring()
             pid_scoring.initialize(lines)
+            pid_scoring.Optimizer = Optimizer.IsoParameterOptimizer()
+            parameters = PIDOptimizer.ReadOptParameters(lines)
+            pid_scoring.Optimizer.Parameters = parameters
         else:
             raise RuntimeError("Scoring configuration file %s does not exist"%args.pid)
 
@@ -141,7 +144,6 @@ if '__main__' == __name__:
         UnitTestFixture.ReadResponses(args.unit_test)
         UnitTestFixture.Update()
 
-    # Uncomment the following two lines for simulations that start airborn
     if craft._sensors.AGL() > 20 and craft._sensors.AirSpeed() > 20:
         craft._flight_control._throttle_control.Set(.5)
         craft.ChangeMode (Globals.FLIGHT_MODE_AIRBORN)

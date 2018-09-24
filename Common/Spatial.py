@@ -190,7 +190,7 @@ class Polar:
 
     def from3 (self, p3,  limit_phi=False, robot_coordinates=True):
         self.rad = p3.norm()
-        if (0 == rad):
+        if (0 == self.rad):
             self.theta = self.phi = 0
         else:
             if robot_coordinates:
@@ -333,11 +333,11 @@ def get_non_rotated_axis (z):
     else:
         try:
             x = y.cross_product (z)
-        except Exception,e:
+        except Exception as e:
             raise RuntimeError("Exception %s in get_non_rotated_axis operation %s.cross_product (%s)"%(str(e),str(z),str(y)))
         try:
             x.div(x.norm())
-        except Exception,e:
+        except Exception as e:
             raise RuntimeError("Exception %s in get_non_rotated_axis operation %s.div (norm()) with z=%s"%(str(e),str(x),str(z)))
         yvec = z.cross_product(x)
         assert(yvec.y >= 0)

@@ -113,6 +113,7 @@ class FlightControl(FileConfig.FileConfig):
         self._descent_distance = 0          # Used for controlled_descent mode
         self._nominal_descent_rate = 0      # Used for controlled_descent mode
         self._airspeed_achievement_minutes = 0.0
+        self._notify_when_nominal = False
 
         FileConfig.FileConfig.__init__(self)
 
@@ -316,8 +317,9 @@ class FlightControl(FileConfig.FileConfig):
         self.CurrentAirSpeed = self._sensors.AirSpeed()
         self.CurrentTrueHeading = self._sensors.TrueHeading()
         self.CurrentAltitude = self._sensors.Altitude()
+        heading_nominal = False
         if self._flight_mode == SUBMODE_TURN:
-            self._desired_roll = self.compute_roll(self.DesiredTrueHeading)
+            self._desired_roll,_ = self.compute_roll(self.DesiredTrueHeading)
             if self.completed_turn():
                 self.get_next_directive()
                 return
@@ -351,7 +353,9 @@ class FlightControl(FileConfig.FileConfig):
                     self._throttle_control.Set(1.0)
                     self._desired_pitch = self.SwoopPitch / 2.0
             elif self._flight_mode != SUBMODE_COURSE:
-                roll = self.compute_roll(self.DesiredTrueHeading)
+                roll,heading_error = self.compute_roll(self.DesiredTrueHeading)
+                if abs(heading_error) < 5:
+                    heading_nominal = True
             else:
                 if self._flight_mode == SUBMODE_COURSE and self.completed_course():
                     self.get_next_directive()
@@ -361,10 +365,11 @@ class FlightControl(FileConfig.FileConfig):
                 roll = self.MaxRoll if roll > 0 else -self.MaxRoll
             self._desired_roll = roll
 
+        airspeed_nominal = False
         if self._journal_file:
             self._journal_file.write(str(ms))
         if self._throttlePID.GetMode() == PID.AUTOMATIC:
-            if self._pid_optimization_goal != "throttle":
+            if self._in_pid_optimization != "throttle":
                 self._throttlePID.SetSetPoint (self.DesiredAirSpeed,
                         self._airspeed_achievement_minutes * 60.0)
             th = self._throttlePID.Compute (self.CurrentAirSpeed, ms)
@@ -373,13 +378,18 @@ class FlightControl(FileConfig.FileConfig):
             if self._journal_file and self.JournalThrottle:
                 self._journal_file.write(",%g,%g,%g"%(self.DesiredAirSpeed, self.CurrentAirSpeed, th))
             self._throttle_control.Set(th)
+            if abs(self.CurrentAirSpeed - self.DesiredAirSpeed) / self.DesiredAirSpeed < .05:
+                airspeed_nominal = True
 
         self._desired_climb_rate = self.get_climb_rate()
         logger.log(2, "Desired Climb Rate %g - %g ==> %g", self.DesiredAltitude, self.CurrentAltitude, self._desired_climb_rate)
 
+        altitude_nominal = False
         if self._flight_mode != SUBMODE_SWOOP_DOWN and self._flight_mode != SUBMODE_SWOOP_UP:
             self.CurrentClimbRate = self._sensors.ClimbRate()
             self._desired_pitch = self.SetPitch(ms)
+            if abs(self.CurrentAltitude - self.DesiredAltitude) < 50:
+                altitude_nominal = True
 
         if self._journal_file:
             self._journal_file.write("\n")
@@ -399,6 +409,12 @@ class FlightControl(FileConfig.FileConfig):
             self._last_pitch = self._desired_pitch
         self._attitude_control.UpdateControls (self._last_pitch, self._desired_roll, 0)
         self._last_update_time = ms
+        if self._notify_when_nominal and altitude_nominal and airspeed_nominal and heading_nominal:
+            self._notify_when_nominal = False
+            self.get_next_directive()
+
+    def NotifyWhenNominal(self):
+        self._notify_when_nominal = True
 
     def get_climb_rate(self):
         altitude_error = self.DesiredAltitude - self.CurrentAltitude
@@ -423,7 +439,8 @@ class FlightControl(FileConfig.FileConfig):
         turn_radius = (360.0 * (self.CurrentAirSpeed / 60.0) / self.TurnRate) / (4 * util.M_PI)
         turn_radius *= self.InterceptMultiplier
         intercept_heading = util.CourseHeading(pos, self.DesiredCourse, turn_radius)
-        return self.compute_roll(intercept_heading)
+        roll,_ = self.compute_roll(intercept_heading)
+        return roll
 
     def compute_roll(self, intercept_heading):
         heading_error = intercept_heading - self._sensors.GroundTrack()
@@ -448,7 +465,7 @@ class FlightControl(FileConfig.FileConfig):
         ret = util.rate_curve (heading_error, self.RollCurve)
         #logger.debug ("compute_roll: %g/%g-->%g error -->%g roll", self._sensors.GroundTrack(),
         #        intercept_heading, heading_error, ret)
-        return ret
+        return ret, heading_error
 
     def FollowCourse(self, course, alt):
         self._flight_mode = SUBMODE_COURSE
@@ -569,26 +586,31 @@ class FlightControl(FileConfig.FileConfig):
         self._callback = cb
 
     def PIDOptimizationStart(self, which_pid, params, scoring_object, outfile):
+        self._flight_mode = SUBMODE_STRAIGHT
         self._in_pid_optimization = which_pid
         self._pid_optimization_scoring = scoring_object
         routing_to = self._in_pid_optimization.split('.')[0]
         if routing_to == "attitude":
             return self._attitude_control.PIDOptimizationStart (which_pid[9:], params, scoring_object, outfile)
         else:
-            step = self._pid_optimization_scoring.InitializeScoring()
-            self._pid_optimization_goal = step.input_value[2]
             self._journal_file = outfile
             self._journal_flush_count = 0
             self.JournalPitch = False
             self.JournalThrottle = False
             if self._in_pid_optimization == "climb_pitch":
                 self._climbPitchPID.SetTunings (params['P'], params['I'], params['D'])
-                self._climbPitchPID.SetSetPoint (self._pid_optimization_goal)
+                step = self._pid_optimization_scoring.InitializeScoring(self._desired_pitch)
+                self._pid_optimization_goal = step.input_value[2]
+                self._climbPitchPID.SetSetPoint (self._pid_optimization_goal, self.ClimbRateAchievementSeconds)
             elif self._in_pid_optimization == "airspeed_pitch":
                 self._airspeedPitchPID.SetTunings (params['P'], params['I'], params['D'])
-                self._airspeedPitchPID.SetSetPoint (self._pid_optimization_goal)
+                step = self._pid_optimization_scoring.InitializeScoring(self._desired_pitch)
+                self._pid_optimization_goal = step.input_value[2]
+                self._airspeedPitchPID.SetSetPoint (self._pid_optimization_goal, self._airspeed_achievement_minutes * 60.0)
             elif self._in_pid_optimization == "throttle":
                 self._throttlePID.SetTunings (params['P'], params['I'], params['D'])
+                step = self._pid_optimization_scoring.InitializeScoring(self._throttle_control.GetCurrent())
+                self._pid_optimization_goal = step.input_value[2]
                 self._throttlePID.SetSetPoint (self._pid_optimization_goal)
             else:
                 raise RuntimeError ("Unknown PID optimization target: %s"%which_pid)
@@ -605,11 +627,11 @@ class FlightControl(FileConfig.FileConfig):
                 return self._pid_optimization_scoring.GetScore()
             self._pid_optimization_goal = step.input_value
             if self._in_pid_optimization == "climb_pitch":
-                self._climbPitchPID.SetSetPoint (self._pid_optimization_goal)
+                self._climbPitchPID.SetSetPoint (self._pid_optimization_goal, self.ClimbRateAchievementSeconds)
             elif self._in_pid_optimization == "airspeed_pitch":
                 self._airspeedPitchPID.SetSetPoint (self._pid_optimization_goal)
             elif self._in_pid_optimization == "throttle":
-                self._throttlePID.SetSetPoint (self._pid_optimization_goal)
+                self._throttlePID.SetSetPoint (self._pid_optimization_goal, self._airspeed_achievement_minutes * 60.0)
             else:
                 raise RuntimeError ("Unknown PID optimization target: %s"%which_pid)
             return step

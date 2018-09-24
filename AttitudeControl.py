@@ -128,17 +128,17 @@ class AttitudeControl(FileConfig.FileConfig):
         self._rollRatePID.SetOutputLimits (mn, mx)
 
         self.CurrentPitch = self._sensors.Pitch()
-        self._pitchPID.SetSetPoint (self.CurrentPitch)
+        self._pitchPID.SetSetPoint (self.CurrentPitch, self.AttitudeAchievementTime)
         self._pitchPID.SetMode (PID.AUTOMATIC, self.CurrentPitch, self._elevator_control.GetCurrent())
 
         self.CurrentYaw = self._sensors.Yaw()
-        self._yawPID.SetSetPoint (self.DesiredYaw)
+        self._yawPID.SetSetPoint (self.DesiredYaw, self.AttitudeAchievementTime / 2.0)
         self._yawPID.SetMode (PID.AUTOMATIC, self.CurrentYaw, self._rudder_control.GetCurrent())
         mn,mx = self._rudder_control.GetLimits()
         self._yawPID.SetOutputLimits (mn, mx)
 
         self.CurrentRollRate = self._sensors.RollRate()
-        self._rollRatePID.SetSetPoint (self.CurrentRollRate)
+        self._rollRatePID.SetSetPoint (self.CurrentRollRate, self.AttitudeAchievementTime / 5.0)
         self._rollRatePID.SetMode (PID.AUTOMATIC, self.CurrentRollRate, self._aileron_control.GetCurrent())
         self._yaw_mode = yaw_mode
 
@@ -185,18 +185,18 @@ class AttitudeControl(FileConfig.FileConfig):
         self.CurrentYaw = self._sensors.Yaw()
         self.CurrentRoll = self._sensors.Roll()
         self.CurrentPitch = self._sensors.Pitch()
-        logger.log (5, "Attitude Control: pitch=%g/%g, roll=%g/%g, yaw = %g/%g",
+        logger.log (5, "Attitude Control: pitch=%g/%g, roll=%g/%g, yaw = %g/%s",
                 self.CurrentPitch, desired_pitch,
                 self.CurrentRoll, desired_roll,
-                self.CurrentYaw, desired_yaw)
+                self.CurrentYaw, str(desired_yaw))
 
         ms = util.millis(self._sensors.Time())
+        self.CurrentRollRate = self._sensors.RollRate()
         if self._journal_file:
             self._journal_file.write(str(ms))
         if self._in_pid_optimization != "roll":
             desired_roll_rate = self.get_roll_rate()
-            self._rollRatePID.SetSetPoint (desired_roll_rate, self.AttitudeAchievementTime)
-        self.CurrentRollRate = self._sensors.RollRate()
+            self._rollRatePID.SetSetPoint (desired_roll_rate, self.AttitudeAchievementTime / 5.0)
         self.aileron_deflection = self._rollRatePID.Compute (self.CurrentRollRate, ms)
         self._aileron_control.Set (self.aileron_deflection)
         if self._in_pid_optimization == "roll":
@@ -216,7 +216,7 @@ class AttitudeControl(FileConfig.FileConfig):
 
         if self.DesiredYaw != None:
             if self._in_pid_optimization != "yaw":
-                self._yawPID.SetSetPoint (self.DesiredYaw, self.AttitudeAchievementTime)
+                self._yawPID.SetSetPoint (self.DesiredYaw, self.AttitudeAchievementTime / 2.0)
             if self._yaw_mode == None:
                 rudder_value = self._yawPID.Compute(self.CurrentYaw, ms) + self.rudder_offset()
                 if self._in_pid_optimization == "yaw":
@@ -292,8 +292,6 @@ class AttitudeControl(FileConfig.FileConfig):
     def PIDOptimizationStart(self, which_pid, params, scoring_object, outfile):
         self._in_pid_optimization = which_pid
         self._pid_optimization_scoring = scoring_object
-        step = self._pid_optimization_scoring.InitializeScoring()
-        self._pid_optimization_goal = step.input_value[2]
         self._journal_file = outfile
         self._journal_flush_count = 0
         self.JournalRoll = False
@@ -301,15 +299,22 @@ class AttitudeControl(FileConfig.FileConfig):
         self.JournalYaw = False
         if which_pid == "roll":
             self._rollRatePID.SetTunings (params['P'], params['I'], params['D'])
-            self._rollRatePID.SetSetPoint (self._pid_optimization_goal)
+            step = self._pid_optimization_scoring.InitializeScoring(self.aileron_deflection)
+            self._pid_optimization_goal = step.input_value[2]
+            self._rollRatePID.SetSetPoint (self._pid_optimization_goal, self.AttitudeAchievementTime / 5.0)
         elif which_pid == "pitch":
             self._pitchPID.SetTunings (params['P'], params['I'], params['D'])
-            self._pitchPID.SetSetPoint (self._pid_optimization_goal)
+            step = self._pid_optimization_scoring.InitializeScoring(self._elevator_control.GetCurrent())
+            self._pid_optimization_goal = step.input_value[2]
+            self._pitchPID.SetSetPoint (self._pid_optimization_goal, self.AttitudeAchievementTime)
         elif which_pid == "yaw":
             self._yawPID.SetTunings (params['P'], params['I'], params['D'])
-            self._yawPID.SetSetPoint (self._pid_optimization_goal)
+            step = self._pid_optimization_scoring.InitializeScoring(self._rudder_control.GetCurrent())
+            self._pid_optimization_goal = step.input_value[2]
+            self._yawPID.SetSetPoint (self._pid_optimization_goal, self.AttitudeAchievementTime / 2.0)
         else:
             raise RuntimeError("Attitude Control: PID Optimization Target %s not recognized"%which_pid)
+        logger.debug ("Starting PID optimiztion with goal %g", self._pid_optimization_goal)
         return step
 
     def PIDOptimizationNext(self):
@@ -320,11 +325,11 @@ class AttitudeControl(FileConfig.FileConfig):
             return self._pid_optimization_scoring.GetScore()
         self._pid_optimization_goal = step.input_value
         if self._in_pid_optimization == "roll":
-            self._rollRatePID.SetSetPoint (self._pid_optimization_goal)
+            self._rollRatePID.SetSetPoint (self._pid_optimization_goal, self.AttitudeAchievementTime / 5.0)
         elif self._in_pid_optimization == "pitch":
-            self._pitchPID.SetSetPoint (self._pid_optimization_goal)
+            self._pitchPID.SetSetPoint (self._pid_optimization_goal, self.AttitudeAchievementTime)
         elif self._in_pid_optimization == "yaw":
-            self._yawPID.SetSetPoint (self._pid_optimization_goal)
+            self._yawPID.SetSetPoint (self._pid_optimization_goal, self.AttitudeAchievementTime / 2.0)
         else:
             raise RuntimeError("Attitude Control: PID Optimization Target %s not recognized"%which_pid)
         return step

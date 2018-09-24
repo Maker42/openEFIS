@@ -380,10 +380,13 @@ class Airplane(FileConfig.FileConfig):
                 dtime, str(desired_altitude),
                 str(desired_airspeed), str(desired_heading))
         logger.info (ret)
-        self._current_directive_end_time = self._sensors.Time() + dtime
         if desired_altitude:
             self.DesiredAltitude = desired_altitude
         self._flight_control.StraightAndLevel(desired_altitude, desired_airspeed, desired_heading)
+        if dtime == 0:
+            self._flight_control.NotifyWhenNominal()
+        else:
+            self._current_directive_end_time = self._sensors.Time() + dtime
         return ret
 
     def SensorSnapshot(self):
@@ -501,8 +504,8 @@ class Airplane(FileConfig.FileConfig):
         logger.debug("PID optimization start with %s", str(params))
         if not params:
             print ("Optimization Complete. Params = %s, score = %g"%(
-                str(self._pid_optimization_scoring.Optimizer.GetGlobalBestParams()),
-                self._pid_optimization_scoring.Optimizer.GetGlobalBestScore()))
+                str(self._pid_optimization_scoring.Optimizer.GetBestParams()),
+                self._pid_optimization_scoring.Optimizer.GetBestScore()))
             self._in_pid_optimization = ""
             self._pid_optimization_scoring = None
             return
@@ -516,6 +519,7 @@ class Airplane(FileConfig.FileConfig):
     def PIDOptimizationNext(self):
         if not self._pid_optimization_scoring:
             # Optimization has completed. Skip this instruction and go to next
+            logger.warning ("Ordered PID optimization step with no optimizer")
             self.GetNextDirective()
             return
         routing_to = self._in_pid_optimization.split('.')[0]
@@ -523,13 +527,13 @@ class Airplane(FileConfig.FileConfig):
             ret = self._flight_control.PIDOptimizationNext()
         else:
             raise RuntimeError("non-flight PID optimization unimplemented")
-        if isinstance(ret,float):
+        if isinstance(ret,float) or isinstance(ret,int):
             self._pid_optimization_score = ret
             logger.debug("PID optimization score %g", ret)
             self.GetNextDirective()
         else:
             self._current_directive_end_time = self._sensors.Time() + ret.periods
-            logger.debug("PID optimization start next")
+            logger.debug("PID optimization start next with time period %g", ret.periods)
 
     def GetNextDirective(self):
         if self._sensors.Battery() < self.BatteryMinReserve - self.RTBBatteryNeeded():

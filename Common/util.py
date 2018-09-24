@@ -1,4 +1,4 @@
-# Copyright (C) 2012-2015  Garrett Herschleb
+# Copyright (C) 2012-2018  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -13,9 +13,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-import time, math, copy, logging
+import time, math, copy, logging, functools
 
-import Spatial
+import Common.Spatial
 
 logger=logging.getLogger(__name__)
 
@@ -28,8 +28,11 @@ NAUT_MILES_PER_METER = .0005399568
 G_IN_KNOTS_PER_SEC = 9.98 * NAUT_MILES_PER_METER * 3600.0
 RAD_DEG = M_PI / 180.0
 DEG_RAD = 180.0 / M_PI
-FEET_METER = 1.0/.3048
+
+METERS_FOOT = 0.3048
+FEET_METER = 1.0 / METERS_FOOT
 FEET_NM = FEET_METER / NAUT_MILES_PER_METER
+MM_INCHES = 25.4
 
 def read_cont_expr (first_args, lines):
     ret = None
@@ -215,7 +218,7 @@ def FIRFilter (current, history, taps):
         del history[-1]
     history.insert(0, current)
     mult = map(lambda h,a: h*a if h != None else 0.0, history, taps)
-    ret = reduce(lambda x,y: x+y, mult)
+    ret = functools.reduce(lambda x,y: x+y, mult)
     return ret
 
 LowPassFIR = [0.45, 0.2, 0.1, 0.05, 0.05, .05, .05, .05]

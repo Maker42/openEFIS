@@ -56,7 +56,7 @@ class LandingControl(FileConfig.FileConfig):
         self.FinalAirSpeed = 0
         self.ShortFinalAirSpeed = 0
         self.DescentAngle = 3.0
-        self.FlarePitchCurve = None # degrees pitch up for feet agl
+        self.FlareDescentCurve = None # descent fpm for feet agl
         self.InitialFlaps = .2
         self.FlarePowerCurve = [(0.4, 0.0), (0.6, 0.05)]
         self.SideSlipLimits = (-5.0, 5.0)
@@ -66,6 +66,9 @@ class LandingControl(FileConfig.FileConfig):
         self.ThresholdAgl = 50.0
         self.MaxPitchChangePerSample = 2.0
         self.PitchPIDSampleTime = 100
+        self.PitchPIDLimits = (0.0, 15.0)
+        self.PitchPIDTuningParams = None
+        self.ClimbRateAchievementSeconds = 2.0
 
         # Operational properties
         self._SlipPID = None
@@ -80,6 +83,7 @@ class LandingControl(FileConfig.FileConfig):
         self._approach_directives = list()
         self._approach_index = 0
         self._last_update_time = 0
+        self._flarePitchPID = None
 
         FileConfig.FileConfig.__init__(self)
 
@@ -99,6 +103,11 @@ class LandingControl(FileConfig.FileConfig):
         self._SlipPID = PID.PID(0, kp, ki, kd, PID.DIRECT, ms)
         mn,mx = self.SideSlipLimits
         self._SlipPID.SetOutputLimits (mn, mx)
+        kp,ki,kd = self.PitchPIDTuningParams
+        self._flarePitchPID = PID.PID(0, kp, ki, kd, PID.DIRECT, ms)
+        mn,mx = self.PitchPIDLimits
+        self._flarePitchPID.SetOutputLimits (mn, mx)
+        self._flarePitchPID.SetSampleTime (self.PitchPIDSampleTime)
 
     # Notifies that the take off roll has accompished enough speed that flight controls
     # have responsibility and authority. Activates PIDs.
@@ -107,6 +116,10 @@ class LandingControl(FileConfig.FileConfig):
         self._last_desired_pitch = last_desired_pitch
         self._approach_directives = list()
         self._approach_index = 0
+
+    def Stop(self):
+        self._flarePitchPID.SetMode (PID.MANUAL, 0, self._last_pitch)
+        return self._last_pitch
 
     def Land(self, runway_points, runway_alt, outer_marker=None, outer_altitude=0,
                    middle_marker=None, right_pattern=False, pattern_alt=0, threshold_agl = -9999):
@@ -302,7 +315,12 @@ class LandingControl(FileConfig.FileConfig):
             ms = util.millis(self._sensors.Time())
 
             # Compute Pitch
-            desired_pitch = util.rate_curve(agl, self.FlarePitchCurve)
+            desired_descent = util.rate_curve(agl, self.FlareDescentCurve)
+            self.CurrentClimbRate = self._sensors.ClimbRate()
+            self._flarePitchPID.SetSetPoint (desired_descent, self.ClimbRateAchievementSeconds)
+            desired_pitch = self._flarePitchPID.Compute (self.CurrentClimbRate, ms)
+            logger.log (10, "Climb Pitch PID: %g/%g-->%g",
+                    self.CurrentClimbRate, desired_descent, desired_pitch)
             pitch_diff = desired_pitch - self._last_pitch
             time_diff = ms - self._last_update_time
             if abs(pitch_diff) > self.MaxPitchChangePerSample * time_diff / self.PitchPIDSampleTime:
@@ -353,6 +371,8 @@ class LandingControl(FileConfig.FileConfig):
     def _begin_flare(self):
         # TODO: Make go-around decision
         logger.info ("Beginning touchdown flare")
+        self._flarePitchPID.SetMode (PID.AUTOMATIC,
+                                    self._sensors.ClimbRate(), self._last_desired_pitch)
         self._flight_control.SetCallback (self._callback)
         self._flight_control.Stop()
         self._flight_mode = SUBMODE_FLARE

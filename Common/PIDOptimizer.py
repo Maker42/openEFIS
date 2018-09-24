@@ -1,4 +1,4 @@
-# Copyright (C) 2015  Garrett Herschleb
+# Copyright (C) 2015-2016  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -16,8 +16,8 @@
 import sys, os, logging
 
 if '__main__' == __name__:
-    sys.path.append (os.path.join ('..', 'FaceProcessing'))
     sys.path.append (os.path.join ('..', 'Common'))
+    sys.path.append (os.path.join ('..'))
 
 import FileConfig
 import PID
@@ -33,6 +33,7 @@ class PIDScoring(FileConfig.FileConfig):
     def __init__(self, ref=None):
         if not ref:
             self.TestSteps = list()
+            self.MachineUnderTest = None
 
             # Relative importance of PID behaviors
             self.VariancePenalty = 1
@@ -42,9 +43,9 @@ class PIDScoring(FileConfig.FileConfig):
             self.NegativeFirstDerivativePenalty = 1
             self.SecondDerivativePenalty = 1
             self.GoalCrossingPenalty = 1
-            self.Optimizer = Optimizer.Optimizer()
         else:
             self.TestSteps = ref.TestSteps
+            self.MachineUnderTest = ref.MachineUnderTest
 
             # Relative importance of PID behaviors
             self.VariancePenalty = ref.VariancePenalty
@@ -54,7 +55,6 @@ class PIDScoring(FileConfig.FileConfig):
             self.NegativeFirstDerivativePenalty = ref.NegativeFirstDerivativePenalty
             self.SecondDerivativePenalty = ref.SecondDerivativePenalty
             self.GoalCrossingPenalty = ref.GoalCrossingPenalty
-            self.Optimizer = ref.Optimizer
 
         # Internal State
         self._last_out = 0
@@ -64,8 +64,7 @@ class PIDScoring(FileConfig.FileConfig):
         self._accumulated_score = 0
         self._current_step = 0
 
-        list_actions = {"TestSteps" : ("TestStep", self.make_test_step), 
-                        "parameters" : ("parameter", self.add_parameter)}
+        list_actions = {"TestSteps" : ("TestStep", self.make_test_step)}
         FileConfig.FileConfig.__init__(self,list_actions=list_actions)
 
     def make_test_step(self, args, filelines):
@@ -74,11 +73,6 @@ class PIDScoring(FileConfig.FileConfig):
         newstep = TestStep()
         newstep.initialize(args, filelines)
         self.TestSteps.append(newstep)
-
-    def add_parameter(self, args, filelines):
-        newparam = Optimizer.OptParameter()
-        newparam.InitializeFromFileLines(filelines)
-        self.Optimizer.Parameters.append (newparam)
 
     def initialize(self, filelines):
         self.InitializeFromFileLines (filelines)
@@ -101,25 +95,23 @@ class PIDScoring(FileConfig.FileConfig):
         self._last_out = outp
         self._last_less_than_goal = less_than_goal
 
-    def InitializeScoring(self,fd=0,sd=0):
-        self._current_step = 0
-        step = self.GetNextStep()
-        inp,outp,g = step.input_value
+    def InitializeScoring(self,outp,fd=0,sd=0):
         self._last_out = outp
         self._last_first_derivative = fd
         self._last_second_derivative = sd
-        self._accumulated_score = 0.0
-        return step
+        self._accumulated_score = 0
+        self._current_step = 0
+        return self.TestSteps[0]
 
     def GetScore(self):
         return self._accumulated_score
 
     def GetNextStep(self):
+        self._current_step += 1
         if self._current_step >= len(self.TestSteps):
             return None
-        ret = self.TestSteps[self._current_step]
-        self._current_step += 1
-        return ret
+        else:
+            return self.TestSteps[self._current_step]
 
 class TestStep(FileConfig.FileConfig):
     def __init__(self):
@@ -134,17 +126,33 @@ class TestStep(FileConfig.FileConfig):
         self.InitializeFromFileLines (filelines)
 
 
-def OptimizePID(scoring_object, mut, lines):
-    scoring_object.Optimizer.StartOptimize()
+opt_parameters = list()
+
+def add_parameter(args, filelines):
+    global opt_parameters
+    newparam = Optimizer.OptParameter()
+    newparam.InitializeFromFileLines(filelines)
+    opt_parameters.append (newparam)
+
+def ReadOptParameters(lines):
+    list_actions = {"parameters" : ("parameter", add_parameter)}
+    fc = FileConfig.FileConfig(list_actions=list_actions)
+    fc.InitializeFromFileLines (lines)
+    return opt_parameters
+
+def OptimizePID(scoring_object, lines):
+    PIDOptimizer = Optimizer.IsoParameterOptimizer()
+    PIDOptimizer.Parameters = ReadOptParameters(lines)
+
+    PIDOptimizer.StartOptimize()
     score = None
     while True:
-        params = scoring_object.Optimizer.OptimizeIteration(score)
+        params = PIDOptimizer.OptimizeIteration(score)
         if not params:
             break
-        score = mut.Score(scoring_object, params, None)
-    return scoring_object.Optimizer.GetGlobalBestParams(),scoring_object.Optimizer.GetGlobalBestScore()
+        score = scoring_object.MachineUnderTest.Score(scoring_object, params, None)
+    return PIDOptimizer.GetBestParams(),PIDOptimizer.GetBestScore(),PIDOptimizer.GetIterationCount()
 
-# A simple theory cart for unit testing
 class Cart(FileConfig.FileConfig):
     def __init__(self):
         self.MotorForceCoefficient = 1
@@ -178,8 +186,9 @@ class Cart(FileConfig.FileConfig):
         if outfilename:
             outfile = open(outfilename, 'w')
 
-        test_step = Scoring.InitializeScoring(0,0)
-        inp,outp,goal = test_step.input_value
+        inp,outp,goal = Scoring.TestSteps[0].input_value
+        Scoring.InitializeScoring(outp,0,0)
+        test_step = 0
         # Pid Under Test: put
         ms = 0
         put = PID.PID (goal,parameters['P'], parameters['I'], parameters['D'], PID.DIRECT, ms)
@@ -189,20 +198,23 @@ class Cart(FileConfig.FileConfig):
         self.InitialConditions (inp, outp)
         if outfile:
             outfile.write("Input,Output,Goal,FirstDerivative,SecondDerivative\n")
-        while True:
-            put.SetSetPoint (goal)
+        test_step_number = 0
+        while test_step_number < len(Scoring.TestSteps):
+            test_step = Scoring.TestSteps[test_step_number]
+            if test_step_number > 0:
+                if test_step.step_type == STEP_TYPE_CHANGE_GOAL:
+                    put.SetSetPoint (test_step.input_value, parameters['T'])
+                    goal = test_step.input_value
+                elif test_step.step_type == STEP_TYPE_START:
+                    raise RuntimeError("Start step type can only be the first step")
+                else:
+                    raise RuntimeError("Unimplemented test step type %s"%test_step.step_type)
             for i in range(test_step.periods):
                 ms += 10
                 inp = put.Compute (outp, ms)
                 outp = self.ComputeNext (inp)
                 Scoring.IncrementScore(inp,outp,goal,outfile)
-            test_step = Scoring.GetNextStep()
-            if not test_step:
-                break
-            if test_step.step_type == STEP_TYPE_CHANGE_GOAL:
-                goal = test_step.input_value
-            else:
-                raise RuntimeError("Unimplemented test step type %s"%test_step.step_type)
+            test_step_number += 1
         return Scoring.GetScore()
 
 if '__main__' == __name__:
@@ -226,18 +238,19 @@ if '__main__' == __name__:
             file.close()
             scoring_object = PIDScoring()
             scoring_object.initialize(lines)
-            MachineUnderTest = Cart()
-            MachineUnderTest.initialize (lines)
+            scoring_object.MachineUnderTest = Cart()
+            scoring_object.MachineUnderTest.initialize (lines)
         else:
             raise RuntimeError ("Command line argument must be a test configuration file")
     else:
         raise RuntimeError ("A configuration test file must be provided on the command line")
 
-    parameters,score = OptimizePID (scoring_object, MachineUnderTest, lines)
-    print ("Best parameters are %g,%g,%g with a score of %g"%(parameters['P'], parameters['I'], parameters['D'], score))
+    parameters,score,iterations = OptimizePID (scoring_object, lines)
+    print ("Best parameters found in %d iterations are %g,%g,%g,%g with a score of %g"%(iterations,
+           parameters['P'], parameters['I'], parameters['D'], parameters['T'], score))
     if len(sys.argv) >= 3:
         print ("Creating output %s"%sys.argv[2])
-        MachineUnderTest.Score (scoring_object, parameters, sys.argv[2])
+        scoring_object.MachineUnderTest.Score (scoring_object, parameters, sys.argv[2])
     else:
         print ("Got fewer args %s"%sys.argv)
 

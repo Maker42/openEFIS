@@ -112,9 +112,9 @@ class TakeoffControl(FileConfig.FileConfig):
         self._last_pitch = self._sensors.Pitch()
         if soft_field:
             self._desired_pitch = self.TakeoffPitch
-            self._attitude_control.StartFlight()
         else:
             self._desired_pitch = self._last_pitch
+        self._attitude_control.StartFlight()
         self._throttle_control.Set(1.0)
         logger.debug ("Throttle up")
         self.DesiredCourse = approach_endpoints
@@ -147,7 +147,6 @@ class TakeoffControl(FileConfig.FileConfig):
                 self._brake_control.Set(.75)
             if (not self._abort) and self.CurrentAirSpeed >= self._callback.StallSpeed * 1.2:
                 self._flight_mode = SUBMODE_ROTATE
-                self._attitude_control.StartFlight()
                 self._desired_pitch = self.TakeoffPitch
                 logger.debug ("Takeoff rotating to pitch %g", self._desired_pitch)
         elif self._flight_mode == SUBMODE_ROTATE:
