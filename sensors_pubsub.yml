@@ -1,0 +1,411 @@
+#
+# Raw Sensor Feeds
+#
+accelerometers:
+  output_values:
+      - timestamp
+      - a_x
+      - a_y
+      - a_z
+  format: dfff
+  pubs:
+  - {addr: localhost, port: 49020, protocol: udp, function: RawAccelerometers}
+  subs:
+  - {addr: localhost, port: 49021, protocol: udp, function: Yaw}
+  - {addr: localhost, port: 49022, protocol: udp, function: PitchEstimate}
+  - {addr: localhost, port: 49023, protocol: udp, function: GroundRoll}
+
+rotationsensors:
+  # output in degrees per second
+  output_values:
+      - timestamp
+      - r_x
+      - r_y
+      - r_z
+  format: dfff
+  pubs:
+  - {addr: localhost, port: 49030, protocol: udp, function: RawRotationSensors}
+  subs:
+  - {addr: localhost, port: 49031, protocol: udp, function: Pitch}
+  - {addr: localhost, port: 49032, protocol: udp, function: Roll}
+  - {addr: localhost, port: 49033, protocol: udp, function: RollRate}
+
+magneticsensors:
+  output_values:
+      - timestamp
+      - m_x
+      - m_y
+      - m_z
+  format: dfff
+  pubs:
+  - {addr: localhost, port: 49040, protocol: udp, function: RawMagneticSensors}
+  subs:
+  - {addr: localhost, port: 49041, protocol: udp, function: HeadingComputed}
+
+pressuresensors:
+  output_values:
+      - timestamp
+      - static_pressure     # In Kilo Pascals
+      - pitot_pressure
+  format: dff
+  pubs:
+  - {addr: localhost, port: 49050, protocol: udp, function: RawPressureSensors}
+  subs:
+  - {addr: localhost, port: 49051, protocol: udp, function: PressureFactors}
+  - {addr: localhost, port: 49052, protocol: udp, function: AltitudeComputed}
+  - {addr: localhost, port: 49053, protocol: udp, function: AirspeedComputed}
+
+temperaturesensors:
+  output_values:
+      - temperature     # In Celcius
+  format: f
+  pubs:
+  - {addr: localhost, port: 49060, protocol: udp, function: RawTemperatureSensors}
+  subs:
+  - {addr: localhost, port: 49061, protocol: udp, function: PressureFactors}
+  - {addr: localhost, port: 49062, protocol: udp, function: AltitudeComputed}
+
+gpsfeed:
+  output_values:
+      - gps_utc
+      - gps_lat
+      - gps_lng
+      - gps_altitude
+      - gps_ground_speed
+      - gps_ground_track
+      - gps_signal_quality
+      - gps_magnetic_variation
+  format: dddiiiif
+  pubs:
+  - {addr: localhost, port: 49070, protocol: udp, function: GPSFeed}
+  subs:
+  - {addr: localhost, port: 49071, protocol: udp, function: TrackRate}
+  - {addr: localhost, port: 49072, protocol: udp, function: ClimbRateEstimate}
+  - {addr: localhost, port: 49073, protocol: udp, function: Altitude}
+  - {addr: localhost, port: 49074, protocol: udp, function: GroundVector}
+  - {addr: localhost, port: 49075, protocol: udp, function: HeadingTasEstimate}
+
+windsaloftreport:
+  output_values:
+      - wa_lat
+      - wa_lng
+      - wa_altitude
+      - wa_time
+      - wa_heading
+      - wa_speed
+  format: ddidii
+  pubs:
+  - {addr: localhost, port: 49080, protocol: udp, function: WindsAloftReport}
+  subs:
+  - {addr: localhost, port: 49081, protocol: udp, function: WindEstimate}
+
+knownaltitude:
+  output_values:
+      - known_altitude
+  format: i
+  pubs:
+  - {addr: localhost, port: 49090, protocol: udp, function: KnownAltitude}
+  subs:
+  - {addr: localhost, port: 49091, protocol: udp, function: PressureFactors}
+
+givenbarometer:
+  output_values:
+      - given_barometer
+  format: f
+  pubs:
+  - {addr: localhost, port: 49100, protocol: udp, function: GivenBarometer}
+  subs:
+  - {addr: localhost, port: 49101, protocol: udp, function: PressureFactors}
+
+
+#
+# Interim computations
+#
+PitchEstimate:
+    output_values:
+        - timestamp
+        - pitch_estimate
+    format: f
+    pubs:
+      - {protocol: internal, function: PitchEstimate}
+    subs:
+      - {protocol: internal, function: Pitch}
+
+GroundRoll:
+    output_values:
+        - timestamp
+        - ground_roll
+    format: f
+    pubs:
+      - {protocol: internal, function: GroundRoll}
+    subs:
+      - {protocol: internal, function: Roll}
+
+HeadingComputed:
+    output_values:
+        - timestamp
+        - heading_computed
+    format: di
+    pubs:
+      - {protocol: internal, function: HeadingComputed}
+    subs:
+      - {protocol: internal, function: Heading}
+      - {protocol: internal, function: TurnRateComputed}
+
+TurnRateComputed:
+    output_values:
+        - timestamp
+        - turn_rate_computed
+    format: df
+    pubs:
+      - {protocol: internal, function: TurnRateComputed}
+    subs:
+      - {protocol: internal, function: TurnRate}
+      - {protocol: internal, function: RollEstimate}
+
+RollEstimate:
+    output_values:
+        - timestamp
+        - roll_estimate
+    format: df
+    pubs:
+      - {protocol: internal, function: RollEstimate}
+    subs:
+      - {protocol: internal, function: Roll}
+      - {protocol: internal, function: RollRateEstimate}
+
+RollRateEstimate:
+    output_values:
+        - timestamp
+        - roll_rate_estimate
+    format: df
+    pubs:
+      - {protocol: internal, function: RollRateEstimate}
+    subs:
+      - {protocol: internal, function: RollRate}
+
+HeadingTasEstimate:
+    output_values:
+        - estimated_heading
+        - estimated_tas
+        - gps_magnetic_variation
+    format: iif
+    pubs:
+      - {protocol: internal, function: HeadingTasEstimate}
+    subs:
+      - {protocol: internal, function: Heading}
+      - {protocol: internal, function: AirspeedEstimate}
+
+AirspeedComputed:
+    output_values:
+        - timestamp
+        - airspeed_computed
+    format: di
+    pubs:
+      - {protocol: internal, function: AirspeedComputed}
+    subs:
+      - {protocol: internal, function: Airspeed}
+
+AltitudeComputed:
+    output_values:
+        - timestamp
+        - altitude_computed
+    format: di
+    pubs:
+      - {protocol: internal, function: AltitudeComputed}
+    subs:
+      - {protocol: internal, function: Altitude}
+      - {protocol: internal, function: ClimbRate}
+
+AirspeedEstimate:
+    output_values:
+        - airspeed_estimate
+    format: i
+    pubs:
+      - {protocol: internal, function: AirspeedEstimate}
+    subs:
+      - {protocol: internal, function: Airspeed}
+
+TrackRate:
+    output_values:
+        - track_rate
+    format: f
+    pubs:
+      - {protocol: internal, function: TrackRate}
+    subs:
+      - {protocol: internal, function: TurnRate}
+
+ClimbRateEstimate:
+    output_values:
+        - climb_rate_estimate
+    format: i
+    pubs:
+      - {protocol: internal, function: ClimbRateEstimate}
+    subs:
+      - {protocol: internal, function: ClimbRate}
+
+WindEstimate:
+    output_values:
+        - wind_heading
+        - wind_speed
+    format: ii
+    pubs:
+      - {protocol: internal, function: WindEstimate}
+    subs:
+      - {protocol: internal, function: HeadingTasEstimate}
+
+PressureFactors:
+    output_values:
+        - sea_level_pressure
+        - cas2tas
+    format: ff
+    pubs:
+      - {protocol: internal, function: PressureFactors}
+    subs:
+      - {protocol: internal, function: AirspeedEstimate}
+      - {protocol: internal, function: WindEstimate}
+      - {protocol: internal, function: AltitudeComputed}
+
+
+#
+# Best guess computations
+#
+
+Yaw:
+    output_values:
+        - timestamp
+        - yaw
+        - yaw_confidence
+    format: dff
+    pubs:
+      - {addr: localhost, port: 48010, protocol: udp, function: Yaw}
+    subs:
+      - {addr: localhost, port: 48011, protocol: udp, function: Display}
+      - {addr: localhost, port: 48012, protocol: udp, function: Autopilot}
+      - {addr: localhost, port: 48013, protocol: udp, function: EventDB}
+
+Pitch:
+    output_values:
+        - timestamp
+        - pitch
+        - pitch_confidence
+    format: dff
+    pubs:
+      - {addr: localhost, port: 48020, protocol: udp, function: Pitch}
+    subs:
+      - {addr: localhost, port: 48021, protocol: udp, function: Display}
+      - {addr: localhost, port: 48022, protocol: udp, function: Autopilot}
+      - {addr: localhost, port: 48023, protocol: udp, function: EventDB}
+
+
+Roll:
+    output_values:
+        - timestamp
+        - roll
+        - roll_confidence
+    format: dff
+    pubs:
+      - {addr: localhost, port: 48030, protocol: udp, function: Roll}
+    subs:
+      - {addr: localhost, port: 48031, protocol: udp, function: Display}
+      - {addr: localhost, port: 48032, protocol: udp, function: Autopilot}
+      - {addr: localhost, port: 48033, protocol: udp, function: EventDB}
+
+Heading:
+    output_values:
+        - timestamp
+        - heading
+        - gps_magnetic_variation
+        - heading_confidence
+    format: diff
+    pubs:
+      - {addr: localhost, port: 48040, protocol: udp, function: Heading}
+    subs:
+      - {addr: localhost, port: 48041, protocol: udp, function: Display}
+      - {addr: localhost, port: 48042, protocol: udp, function: Autopilot}
+      - {addr: localhost, port: 48043, protocol: udp, function: EventDB}
+      - {protocol: internal, function: WindEstimate}
+
+TurnRate:
+    output_values:
+        - timestamp
+        - turn_rate
+        - turn_rate_confidence
+    format: dff
+    pubs:
+      - {addr: localhost, port: 48050, protocol: udp, function: TurnRate}
+    subs:
+      - {addr: localhost, port: 48051, protocol: udp, function: Display}
+      - {addr: localhost, port: 48052, protocol: udp, function: Autopilot}
+      - {addr: localhost, port: 48053, protocol: udp, function: EventDB}
+
+RollRate:
+    output_values:
+        - timestamp
+        - roll_rate
+        - roll_rate_confidence
+    format: dff
+    pubs:
+      - {addr: localhost, port: 48060, protocol: udp, function: RollRate}
+    subs:
+      - {addr: localhost, port: 48061, protocol: udp, function: Display}
+      - {addr: localhost, port: 48062, protocol: udp, function: Autopilot}
+      - {addr: localhost, port: 48063, protocol: udp, function: EventDB}
+
+Airspeed:
+    output_values:
+        - timestamp
+        - airspeed_is_estimated
+        - airspeed
+        - airspeed_confidence
+    format: diif
+    pubs:
+      - {addr: localhost, port: 48070, protocol: udp, function: Airspeed}
+    subs:
+      - {addr: localhost, port: 48071, protocol: udp, function: Display}
+      - {addr: localhost, port: 48072, protocol: udp, function: Autopilot}
+      - {addr: localhost, port: 48073, protocol: udp, function: EventDB}
+      - {protocol: internal, function: WindEstimate}
+
+ClimbRate:
+    output_values:
+        - timestamp
+        - climb_rate
+        - climb_rate_confidence
+    format: dif
+    pubs:
+      - {addr: localhost, port: 48080, protocol: udp, function: ClimbRate}
+    subs:
+      - {addr: localhost, port: 48081, protocol: udp, function: Display}
+      - {addr: localhost, port: 48082, protocol: udp, function: Autopilot}
+      - {addr: localhost, port: 48083, protocol: udp, function: EventDB}
+
+Altitude:
+    output_values:
+        - timestamp
+        - altitude
+        - altitude_confidence
+    format: dif
+    pubs:
+      - {addr: localhost, port: 48090, protocol: udp, function: Altitude}
+    subs:
+      - {addr: localhost, port: 48091, protocol: udp, function: Display}
+      - {addr: localhost, port: 48092, protocol: udp, function: Autopilot}
+      - {addr: localhost, port: 48093, protocol: udp, function: EventDB}
+
+GroundVector:
+    output_values:
+        - gps_utc
+        - gps_lat
+        - gps_lng
+        - gps_ground_speed
+        - gps_ground_track
+        - ground_vector_confidence
+    format: dddiif
+    pubs:
+      - {addr: localhost, port: 48100, protocol: udp, function: GroundVector}
+    subs:
+      - {addr: localhost, port: 48101, protocol: udp, function: Display}
+      - {addr: localhost, port: 48102, protocol: udp, function: Autopilot}
+      - {addr: localhost, port: 48103, protocol: udp, function: EventDB}
+      - {protocol: internal, function: WindEstimate}

@@ -1,0 +1,94 @@
+accelerometers:
+  function: RawAccelerometers
+  period: 0.5
+  sequences:
+      - {value: [time, 0, 0, 233],
+         duration: 5
+        }
+      - {value: [time, 1, 10, 225],
+         duration: 5
+        }
+      - {value: [time, 1, 20, 215],
+         duration: 5
+        }
+
+rotationsensors:
+  function: RawRotationSensors
+  period: 0.5
+  sequences:
+      - {value: [time, 1.0, 0.0, 0.0],
+         duration: 5
+        }
+      - {value: [time, 2.0, 1.0, 0.0],
+         duration: 5
+        }
+      - {value: [time, -3, 2.0, 1.0],
+         duration: 5
+        }
+
+magneticsensors:
+  function: RawMagneticSensors
+  period: 0.5
+  sequences:
+      - {value: [time, 10, 100, 1],
+         duration: 5
+        }
+      - {value: [time, 20, 90, 1],
+         duration: 5
+        }
+      - {value: [time, 15, 95, 1],
+         duration: 5
+        }
+
+pressuresensors:
+    period: 0.5
+    function: RawPressureSensors
+    sequences:
+      - {value: [time, 1000.0, 1000.0],
+         duration: 5
+        }
+      - {value: [time, 900.0, 890.0],
+         duration: 5
+        }
+      - {value: [time, 800.0, 750.0],
+         duration: 5
+        }
+
+
+temperaturesensors:
+    period: 0.5
+    function: RawTemperatureSensors
+    sequences:
+      - {value: [15.0],
+         duration: 5
+        }
+      - {value: [16.0],
+         duration: 5
+        }
+      - {value: [17.0],
+         duration: 5
+        }
+
+
+knownaltitude:
+    period: 5.0
+    function: KnownAltitude
+    sequences:
+      - {value: [150],
+         duration: 5
+        }
+
+gpsfeed:
+  function: GPSFeed
+  period: 0.5
+  sequences:
+      - {value: [time, 8.0, 0.0, 1000, 120, 10, 5, 7.1],
+         duration: 5
+        }
+      - {value: [time, 8.0, 0.0, 1010, 121, 10, 5, 7.1],
+         duration: 5
+        }
+      - {value: [time, 8.0, 0.001, 1020, 122, 10, 5, 7.1],
+         duration: 5
+        }
+
