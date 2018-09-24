@@ -31,7 +31,8 @@ if '__main__' == __name__:
 
 import Globals, ArduinoCmdMessenger, CorrectedSensors
 
-import Spatial, util
+import Common.Spatial as Spatial
+import Common.util as util
 
 logger=logging.getLogger(__name__)
 
@@ -94,7 +95,7 @@ class SenseControlMaster:
                         if line:
                             self.Sensors = eval(line)
                             break
-                    except Exception, e:
+                    except Exception as e:
                         logger.error ("(%s): Bad receive: %s", str(e), lines[index])
             if len(self.Sensors):
                 break
@@ -139,12 +140,12 @@ class SenseControlSlave:
                         if command in self._valid_sensor_commands:
                             try:
                                 eval ("self._sensors.%s"%line)
-                            except Exception, e:
+                            except Exception as e:
                                 rootlogger.error ("%s: Bad sensor command: %s"%(str(e), line))
                         elif command in self._valid_control_commands:
                             try:
                                 eval ("self.%s"%line)
-                            except Exception, e:
+                            except Exception as e:
                                 rootlogger.error ("%s: Bad control command: %s"%(str(e), line))
                         else:
                             rootlogger.error ("Invalid command: %s"%line)
@@ -174,13 +175,13 @@ if '__main__' == __name__:
         if os.path.isdir(args.home):
             os.environ['HOME'] = args.home
         else:
-            print("Invalid home directory: " + args.home)
+            print(("Invalid home directory: " + args.home))
             sys.exit(1)
     rootlogger = logging.getLogger()
     rootlogger.setLevel(args.log_level)
 
-    if not os.environ.has_key('HOME'):
-        if os.environ.has_key('HOMEPATH'):
+    if 'HOME' not in os.environ:
+        if 'HOMEPATH' in os.environ:
             os.environ['HOME'] = os.environ['HOMEDRIVE'] + os.environ['HOMEPATH']
         elif len(sys.argv) > 0:
             os.environ['HOME'],_ = os.path.split(sys.argv[0])
@@ -236,7 +237,7 @@ if '__main__' == __name__:
             wv = Spatial.Vector(math.sin(dr * util.RAD_DEG) * speed, math.cos(dr * util.RAD_DEG) * speed, 0)
             sensors.WindVector (wv)
             rootlogger.info("Wind Vector = %s", str(wv))
-        except Exception, e:
+        except Exception as e:
             rootlogger.error ("Invalid wind input: %s (%s)", args.wind, str(e))
     else:
         rootlogger.info("Wind = None")

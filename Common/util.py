@@ -15,7 +15,7 @@
 
 import time, math, copy, logging, functools
 
-import Common.Spatial
+import Common.Spatial as Spatial
 
 logger=logging.getLogger(__name__)
 

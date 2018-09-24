@@ -65,6 +65,7 @@ class GroundControl(FileConfig):
         self._yawPID.SetMode (PID.MANUAL, self.CurrentHeading, self.rudder_control.GetCurrent())
 
     def Taxi(self, desired_course):
+        pass
 
     def UpdateControls (self, desired_yaw):
         self.DesiredYaw = desired_yaw

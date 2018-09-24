@@ -1,5 +1,5 @@
-#!/usr/bin/python
-# Copyright (C) 2015  Garrett Herschleb
+#   ## For unix, Start with #!/usr/bin/python
+# Copyright (C) 2015-2018  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,15 +20,12 @@ import sys,  math, datetime, time
 import argparse
 import logging
 
+import Airplane, Globals
+import Common.PIDOptimizer as PIDOptimizer
+import Common.Optimizer as Optimizer
+import Test.UnitTestFixture as UnitTestFixture
+
 args = None
-
-for p in sys.path:
-    if 'Common' in p:
-        break
-else:
-    sys.path.append (os.path.join ('Common'))
-    sys.path.append (os.path.join ('Test'))
-
 
 if '__main__' == __name__:
     opt = argparse.ArgumentParser(description='Execute a flight plan')
@@ -56,21 +53,6 @@ if '__main__' == __name__:
     rootlogger = logging.getLogger()
     rootlogger.setLevel(args.log_level)
 
-    if not os.environ.has_key('HOME'):
-        if os.environ.has_key('HOMEPATH'):
-            os.environ['HOME'] = os.environ['HOMEDRIVE'] + os.environ['HOMEPATH']
-        elif len(sys.argv) > 0:
-            os.environ['HOME'],_ = os.path.split(sys.argv[0])
-        elif os.path.isdir('C:\\'):
-            os.environ['HOME'] = 'C:\\'
-        else:
-            os.environ['HOME'] = '/'
-
-import Airplane, Globals
-import PIDOptimizer, Optimizer
-import UnitTestFixture
-
-if '__main__' == __name__:
     dist_path = '/usr/local/lib/python2.7/dist-packages'
     if os.path.isdir(dist_path):
         sys.path.append('/usr/local/lib/python2.7/dist-packages')
@@ -96,10 +78,6 @@ if '__main__' == __name__:
     console_handler.setLevel(logging.DEBUG)
     rootlogger.addHandler(console_handler)
     rootlogger.log(99, log_start)
-
-    if args.unit_test:
-        # ??
-        pass
 
     rcfg = open (args.airplane_config,  'r')
     rlines = rcfg.readlines()

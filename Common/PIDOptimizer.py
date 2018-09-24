@@ -19,9 +19,9 @@ if '__main__' == __name__:
     sys.path.append (os.path.join ('..', 'Common'))
     sys.path.append (os.path.join ('..'))
 
-import FileConfig
+import Common.FileConfig as FileConfig
 import PID
-import Optimizer
+import Common.Optimizer as Optimizer
 
 STEP_TYPE_START='START'
 STEP_TYPE_CHANGE_GOAL='CHANGE_GOAL'

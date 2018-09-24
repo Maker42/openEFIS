@@ -16,8 +16,9 @@
 import time, logging, math, copy
 
 import PID
-import FileConfig, Globals
-import util
+import Common.FileConfig as FileConfig
+import Globals
+import Common.util as util
 
 logger=logging.getLogger(__name__)
 
@@ -149,7 +150,7 @@ class TakeoffControlVTOL(FileConfig.FileConfig):
                 if self.LandAfterReachingState.find ('.') > 0:
                     try:
                         state_length = int(self.LandAfterReachingState.rsplit('.', 1)[1])
-                    except Exception,e:
+                    except Exception as e:
                         logger.error ("%s: Unable to read land command substate penetration", str(e))
                 if self._transition_step >= state_length:
                     aborted = True
@@ -184,7 +185,7 @@ class TakeoffControlVTOL(FileConfig.FileConfig):
                 if self.LandAfterReachingState.find ('.') > 0:
                     try:
                         state_length = float(self.LandAfterReachingState.rsplit('.', 1)[1])
-                    except Exception,e:
+                    except Exception as e:
                         logger.error ("%s: Unable to read land command substate penetration", str(e))
                 if self._transition_step + state_length < self._sensors.Time():
                     self.get_next_directive()

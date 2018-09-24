@@ -17,7 +17,8 @@ import time, logging
 
 import PID
 
-import util, FileConfig
+import Common.util as util
+import Common.FileConfig as FileConfig
 
 logger=logging.getLogger(__name__)
 
@@ -253,7 +254,7 @@ class AttitudeControl(FileConfig.FileConfig):
     def GetTunings (self, params):
         try:
             return params [self._current_airspeed_index]
-        except Exception, e:
+        except Exception as e:
             raise RuntimeError ("GetTunings[%d] got error %s"%(self._current_airspeed_index, str(e)))
 
     def get_new_airspeed_index (self):

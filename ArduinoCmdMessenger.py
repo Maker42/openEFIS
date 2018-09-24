@@ -1,5 +1,5 @@
 import logging, time
-import util
+import Common.util as util
 
 logger=logging.getLogger(__name__)
 
@@ -133,11 +133,11 @@ class CmdMessenger:
                     args = self._remove_escapes (args)
                     try:
                         cmdId = int(args[0])
-                        if self._command_handlers.has_key(cmdId):
+                        if cmdId in self._command_handlers:
                             self._command_handlers[cmdId] (args[1:])
                         else:
-                            print ("Invalid command %d received"%cmdId)
-                    except Exception,e:
+                            print(("Invalid command %d received"%cmdId))
+                    except Exception as e:
                         logger.warning("Error handling command %s: %s", str(args), str(e))
                 eoc = self._find_command_end (recv)
             self._residual_recv = recv

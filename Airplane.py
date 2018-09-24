@@ -15,15 +15,15 @@
 
 import time, logging, asyncore
 
-import PID, FileConfig, Globals, util
+import Common.FileConfig as FileConfig
+import Globals
+import Common.util as util
 
 import SenseControl, CommandControl
 import Xplane, SurfaceControl, AttitudeControl, FlightControl, AttitudeControlVTOL
 import TakeoffControlVTOL, LandingControlVTOL, AttitudeVTOLEstimation
 import MiddleEngineTiltControl, VTOLYawControl, SolenoidControl, ThrottleControl
 import TakeoffControl, LandingControl
-import Spatial
-import UnitTestFixture
 
 logger=logging.getLogger(__name__)
 

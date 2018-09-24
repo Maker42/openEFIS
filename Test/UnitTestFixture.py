@@ -15,7 +15,7 @@
 
 import logging, time
 
-import FileConfig
+import Common.FileConfig as FileConfig
 
 control = None
 

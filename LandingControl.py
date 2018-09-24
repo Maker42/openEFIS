@@ -16,8 +16,8 @@
 import time, logging, math
 
 import PID
-import FileConfig
-import util
+import Common.FileConfig as FileConfig
+import Common.util as util
 
 logger=logging.getLogger(__name__)
 

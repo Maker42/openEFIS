@@ -17,7 +17,8 @@ import time, logging
 
 import PID
 
-import util, FileConfig
+import Common.util as util
+import Common.FileConfig as FileConfig
 
 logger=logging.getLogger(__name__)
 
@@ -274,7 +275,7 @@ class AttitudeControlVTOL(FileConfig.FileConfig):
         throttle_values = [tv if tv >= 0.0 else 0.0 for tv in throttle_values]
         throttle_values = [tv if tv <= 1.0 else 1.0 for tv in throttle_values]
         if throttle_overrides != None:
-            throttle_values = map(lambda ct,ot: ot if ot!=None else ct, throttle_values, throttle_overrides)
+            throttle_values = list(map(lambda ct,ot: ot if ot!=None else ct, throttle_values, throttle_overrides))
         # Set the throttles
         self._throttle_controls.SetThrottles(throttle_values)
 

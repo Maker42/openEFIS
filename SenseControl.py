@@ -15,9 +15,8 @@
 
 import time, math, logging
 
-import serial
-
-import Globals, Spatial, SenseControlRemote
+import Globals
+#import SenseControlRemote
 
 logger=logging.getLogger(__name__)
 

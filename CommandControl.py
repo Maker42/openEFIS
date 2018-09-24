@@ -19,8 +19,6 @@ import sys
 import socket, logging, asyncore
 import argparse
 
-import serial
-
 if '__main__' == __name__:
     for p in sys.path:
         if 'Common' in p:
@@ -33,7 +31,7 @@ else:
 
 import Globals
 
-import util
+import Common.util as util
 
 command_queue = list()
 
@@ -70,7 +68,7 @@ class command_request_handler(asyncore.dispatcher_with_send):
                         if not feedback:
                             feedback = "No feedback."
                         feedback = "Command executed: %s"%feedback
-                    except Exception,e:
+                    except Exception as e:
                         feedback = "Error (%s) executing command: %s"%(str(e), command)
                         logger.error (feedback)
                 else:
@@ -95,7 +93,7 @@ class CommandServer(asyncore.dispatcher):
         pair = self.accept()
         if pair is not None:
             sock, addr = pair
-            print 'Incoming connection from %s' % repr(addr)
+            print ('Incoming connection from %s' % repr(addr))
             handler = command_request_handler(sock, self._command_queue)
 
     def GetNextDirective(self):
