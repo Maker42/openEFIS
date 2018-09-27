@@ -1,0 +1,6 @@
+accelerometers: [sensor_i2c, a, 2000]     # Accelerometer on the I2C bus, 100ms sample period
+gyros: [sensor_i2c, r, 1000]
+magnetic: [sensor_i2c, m, 2000]
+pressure: [sensor_i2c, p, 2000]
+temperature: [sensor_i2c, t, 10000]
+gps: [sensor_serial, g, 1, 1000]

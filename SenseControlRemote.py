@@ -16,218 +16,288 @@
 import os
 import sys,  math, time
 
-import socket, logging
+import logging
 import argparse
+
+import yaml
 
 import serial
 
-if '__main__' == __name__:
-    for p in sys.path:
-        if 'Common' in p:
-            break
-    else:
-        sys.path.append (os.path.join ('Common'))
-        sys.path.append (os.path.join ('Test'))
+from ArduinoCmdMessenger import ArduinoCmdMessenger
 
-import Globals, ArduinoCmdMessenger, CorrectedSensors
-
+import Globals
 import Common.Spatial as Spatial
 import Common.util as util
 
+from NMEAParser import ParseNMEAStrings
+
+from MicroServerComs import MicroServerComs
+
 logger=logging.getLogger(__name__)
 
-class SenseControlMaster:
-    def __init__(self, localportno, command_host, command_port):
-        self.localport = localportno
-        self.command_host = command_host
-        self.command_port = command_port
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.bind (("", localportno))
-        self.sock.setblocking (0)
-        self.Sensors = dict()
+arduino_messages = [
+# Messages from sense/control board
+ "ack"                          # arguments description:
+,"nack"                         # reason for nack
+,"sensor_reading"               # channel, value, timestamp
+,"log"                          # loglevel, string
 
-    def SetAnalogChannel(self, channel, val):
-        cmd = "SetAnalogChannel (%d,%d)\n"%(channel, val)
-        self.sock.sendto(cmd, (self.command_host, self.command_port))
+# Messages from this program to the board
+,"setup_digital_sensor"         # channel, pin, polling period (ms), use internal pullup (0 or 1)
+,"setup_analog_sensor"          # channel, pin, polling period (ms)
+,"setup_i2c_sensor"             # channel, function, polling period (ms)
+,"setup_spi_sensor"             # channel, function, polling period (ms)
+,"setup_serial_sensor"          # channel, function, port number, polling period (ms)
+,"setup_analog_output"          # pin, initial_value
+,"setup_digital_output"         # pin, initial_value
+,"set_analog_output"            # pin, value
+,"set_digital_output"           # pin, value
+]
 
-    def SetDigitalChannel(self, channel, val):
-        cmd = "SetDigitalChannel (%d,%d)\n"%(channel, val)
-        self.sock.sendto(cmd, (self.command_host, self.command_port))
-
-    def SetThrottles(self, *args):
-        throttles = tuple(args)
-        cmd = "SetThrottles %s\n"%str(throttles)
-        logger.log (3, "Setting throttles to %g,%g,%g,%g  %g,%g", throttles[0],
-                throttles[1],
-                throttles[2],
-                throttles[3],
-                throttles[4],
-                throttles[5],
-                )
-        self.sock.sendto(cmd, (self.command_host, self.command_port))
-
-    def FlightParameters(self, *args):
-        self.sock.sendto("FlightParameters %s\n"%str(*args), (self.command_host, self.command_port))
-
-    def KnownAltitude(self, a):
-        self.sock.sendto("KnownAltitude (%g)\n"%a, (self.command_host, self.command_port))
-
-    def MagneticVariation(self, v):
-        self.sock.sendto("MagneticVariation (%g)\n"%v, (self.command_host, self.command_port))
-
-    def FlightMode(self, m, v):
-        self.sock.sendto("FlightMode ('%s',%s)\n"%(m,v), (self.command_host, self.command_port))
-
-    def WindVector(self, v):
-        self.sock.sendto("WindVector (%s)\n"%str(v), (self.command_host, self.command_port))
-
-    def Update(self):
-        while True:
-            try:
-                rec = self.sock.recv(1024)
-            except:
-                rec = None
-            if rec:
-                lines = rec.split('\n')
-                for index in range(-1,-len(lines)-1,-1):
-                    try:
-                        line = lines[index].strip()
-                        if line:
-                            self.Sensors = eval(line)
-                            break
-                    except Exception as e:
-                        logger.error ("(%s): Bad receive: %s", str(e), lines[index])
-            if len(self.Sensors):
-                break
-            time.sleep(.01)
-
-class SenseControlSlave:
-    def __init__(self, command_channel, master_sock, sensors, master_address, master_port):
+class SenseControlSlave(MicroServerComs):
+    def __init__(self, command_channel, config):
         self._mainCmd = command_channel
-        self._master_sock = master_sock
-        self._master_address = master_address
-        self._master_port = master_port
-        self._sensors = sensors
-        self._valid_sensor_commands = ["FlightParameters", "KnownAltitude", "MagneticVariation",
-                "FlightMode", "WindVector"]
-        self._valid_control_commands = ["SetAnalogChannel", "SetDigitalChannel", "SetThrottles"]
+        self._config = config
+        self._sensors = dict()
+        sensor_chnum = 0
+        self._accelerometers = Accelerometers()
+        self._rotation = Rotation()
+        self._magnetic = Magnetic()
+        self._pressure = Pressure()
+        self._temperature = Temperature()
+        self._gps = GPS()
+        for chname,cfg in self._config.items():
+            if cfg[0].startswith ('sensor'):
+                if cfg[0] == 'sensor_digital':
+                    _,function,pin,period = cfg
+                    self._mainCmd.sendCmd ("setup_digital_sensor", [sensor_chnum, pin, period])
+                elif cfg[0] == 'sensor_analog':
+                    _,function,pin,period = cfg
+                    self._mainCmd.sendCmd ("setup_analog_sensor", [sensor_chnum, pin, period])
+                elif cfg[0] == 'sensor_i2c':
+                    _,function,period = cfg
+                    self._mainCmd.sendCmd ("setup_i2c_sensor", [sensor_chnum, function, period])
+                elif cfg[0] == 'sensor_spi':
+                    _,function,period = cfg
+                    self._mainCmd.sendCmd ("setup_spi_sensor", [sensor_chnum, function, period])
+                elif cfg[0] == 'sensor_serial':
+                    _,function,port,period = cfg
+                    self._mainCmd.sendCmd ("setup_serial_sensor", [sensor_chnum, function, port, period])
+                else:
+                    raise RuntimeError ("Unsupported sensor type: %s"%cfg[0])
+                self._sensors[sensor_chnum] = function
+                sensor_chnum += 1
+        MicroServerComs.__init__(self, "ControlSlave")
 
-    def SetAnalogChannel(self, channel, val):
-        self._mainCmd.sendValidatedCmd(Globals.CMD_ANALOG_SET_CHANNEL, channel, val)
+    def update(self, channel):
+        if channel == "Control":
+            if not self.channel in self._config:
+                raise RuntimeError ("Invalid channel name received: %s"%self.channel)
+            chtype,pin = self._config[self.channel]
+            if chtype == 'analog_output':
+                self._mainCmd.sendCmd ("set_analog_output", pin, self.value)
+            elif chtype == 'digital_output':
+                self._mainCmd.sendCmd ("set_digital_output", pin, self.value)
+            else:
+                raise RuntimeError ("Trying to set invalid channel (%s) type %s"%(self.channel, chtype))
 
-    def SetDigitalChannel(self, channel, val):
-        self._mainCmd.sendValidatedCmd(Globals.CMD_DIGITAL_SET_CHANNEL, channel, val)
-
-    def SetThrottles(self, *throttles):
-        global rootlogger
-        self._mainCmd.sendValidatedCmd(Globals.CMD_SET_THROTTLES, *throttles)
-        tst = tuple(throttles)
-        rootlogger.log (3, "Setting throttles to %s", str(tst))
-
-    def Update(self):
+    def ReadSensors(self):
         global rootlogger
         while True:
-            try:
-                rec = self._master_sock.recv(1024)
-            except:
-                rec = None
-            if rec:
-                lines = rec.split('\n')
-                for line in lines:
-                    line = line.strip()
-                    if len(line):
-                        command = line.split(' ', 1)[0]
-                        if command in self._valid_sensor_commands:
-                            try:
-                                eval ("self._sensors.%s"%line)
-                            except Exception as e:
-                                rootlogger.error ("%s: Bad sensor command: %s"%(str(e), line))
-                        elif command in self._valid_control_commands:
-                            try:
-                                eval ("self.%s"%line)
-                            except Exception as e:
-                                rootlogger.error ("%s: Bad control command: %s"%(str(e), line))
-                        else:
-                            rootlogger.error ("Invalid command: %s"%line)
+            cmd = self._mainCmd.read_command (0)
+            if cmd is not None:
+                name, args, ts = cmd
+                if name == 'sensor_reading':
+                    ch = args[0]
+                    if not ch in self._sensors:
+                        rootlogger.error ("Invalid sensor channel received from board: %d"%ch)
+                    else:
+                        function = self._sensors[ch]
+                        self.sensor_updated (function, args[1:])
+                if name == 'log':
+                    loglevel,log_string = args
+                    rootlogger.log (loglevel, "scboard: " + log_string)
             else:
                 break
-        self._master_sock.sendto(str(self._sensors.Readings) + '\n',
-                                (self._master_address, self._master_port))
 
+    def sensor_updated(self, function, args):
+        """ function labels used by sensor board:
+        ts = timestamp. unsigned 4 byte integer in milliseconds since boot
+        a: accelerometers. output format x,y,z,ts floating point. units: don't care
+        r: rotation sensors. output format x,y,z,ts floating point. units: degrees / sec
+        m: magnetic sensors. output format x,y,z,ts floating point. units: don't care
+        p: pressure sensors. output format static,pitot,ts floating point. units: Kilo-Pascals
+        t: temperature sensors. output format temperature floating point. units: Celcius
+        g: gps. output format NMEA string
+        """
+        if function == 'a':
+            self._accelerometers.send (args)
+        elif function == 'r':
+            self._rotation.send (args)
+        elif function == 'm':
+            self._magnetic.send (args)
+        elif function == 'p':
+            self._pressure.send (args)
+        elif function == 't':
+            self._temperature.send (args)
+        elif function == 'g':
+            self._gps.send (args)
+        elif function == 'd':
+            # generic digital input, configured elsewhere
+            # Not implemented
+            pass
+        elif function == 'n':
+            # generic analog input, configured elsewhere
+            # Not implemented
+            pass
+
+
+class Accelerometers(MicroServerComs):
+    def __init__(self):
+        self.a_x = None
+        self.a_y = None
+        self.a_z = None
+        self.timestamp = None
+        MicroServerComs.__init__(self, "RawAccelerometers")
+
+    def send(self, args):
+        self.a_x, self.a_y, self.a_z, ts = args
+        self.timestamp = make_timestamp (ts)
+        print ("accel %g,%g,%g"%(self.a_x, self.a_y, self.a_z))
+        self.publish()
+
+class Rotation(MicroServerComs):
+    def __init__(self):
+        self.r_x = None
+        self.r_y = None
+        self.r_z = None
+        self.timestamp = None
+        MicroServerComs.__init__(self, "RawRotationSensors")
+
+    def send(self, args):
+        self.r_x, self.r_y, self.r_z, ts = args
+        self.timestamp = make_timestamp (ts)
+        print ("rotation %g,%g,%g"%(self.r_x, self.r_y, self.r_z))
+        self.publish()
+
+class Magnetic(MicroServerComs):
+    def __init__(self):
+        self.m_x = None
+        self.m_y = None
+        self.m_z = None
+        self.timestamp = None
+        MicroServerComs.__init__(self, "RawMagneticSensors")
+
+    def send(self, args):
+        self.m_x, self.m_y, self.m_z, ts = args
+        self.timestamp = make_timestamp (ts)
+        print ("magnetic %g,%g,%g"%(self.m_x, self.m_y, self.m_z))
+        self.publish()
+
+class Pressure(MicroServerComs):
+    def __init__(self):
+        self.static_pressure = None
+        self.pitot_pressure = None
+        self.timestamp = None
+        MicroServerComs.__init__(self, "RawPressureSensors")
+
+    def send(self, args):
+        self.static_pressure, self.pitot_pressure, ts = args
+        self.static_pressure /= 1000.0
+        self.pitot_pressure /= 1000.0
+        self.timestamp = make_timestamp (ts)
+        print ("pressure %g,%g"%(self.static_pressure, self.pitot_pressure))
+        self.publish()
+
+class Temperature(MicroServerComs):
+    def __init__(self):
+        self.temperature = None
+        MicroServerComs.__init__(self, "RawTemperatureSensors")
+
+    def send(self, args):
+        self.temperature = args[0]
+        print ("temp %g"%(self.temperature))
+        self.publish()
+
+class GPS(MicroServerComs):
+    def __init__(self):
+        self.gps_utc = None
+        self.gps_lat = None
+        self.gps_lng = None
+        self.gps_altitude = None
+        self.gps_ground_speed = None
+        self.gps_ground_track = None
+        self.gps_signal_quality = None
+        self.gps_magnetic_variation = None
+        MicroServerComs.__init__(self, "RawTemperatureSensors")
+
+    def send(self, args):
+        nmea_string,ts = args
+        ParseNMEAStrings (nmea_string, self)
+        if self.HaveNewPosition and self.gps_ground_speed is not None:
+            update_time_offset (self.gps_utc, ts)
+            self.HaveNewPosition = False
+            print ("gps: %g,%g,%g,%d,%d,%d,%d,%g"%(
+        self.gps_utc,
+        self.gps_lat,
+        self.gps_lng,
+        self.gps_altitude,
+        self.gps_ground_speed,
+        self.gps_ground_track,
+        self.gps_signal_quality,
+        self.gps_magnetic_variation))
+            self.publish()
+
+time_offset = 0
+
+def update_time_offset(curtime, board_ts):
+    global time_offset
+    if time_offset == 0:
+        time_offset = curtime - float(board_ts) / 1000.0
+
+def make_timestamp (board_ts):
+    if time_offset == 0:
+        return time.time()
+    else:
+        return board_ts + time_offset
 
 if '__main__' == __name__:
     opt = argparse.ArgumentParser(description='Control/sensor slave process')
-    opt.add_argument('serial-port', help = 'Serial port path of physical controller')
-    opt.add_argument('--master-address', default='localhost', help='IP address of master')
-    opt.add_argument('--master-port', default=49000, help = 'Port number of master')
-    opt.add_argument('--local-port', default=49001, help = 'Local port number to use')
-    opt.add_argument('-r', '--replay', default=None, help = 'Specify log to replay in simulation')
+    opt.add_argument('serial_port', help = 'Serial port path of physical controller')
+    opt.add_argument('--config-file', default='sensors.yml', help='YAML config file for sensor / control board')
     opt.add_argument('-p', '--log-prefix', default=None, help = 'Over-ride logging prefix')
-    opt.add_argument('-m', '--home', default=None, help = 'Over-ride home directory for objects and procedures')
-    opt.add_argument('-c', '--record', action='store_true', help = 'Create a recording in simulation')
     opt.add_argument('-l', '--log-level', type=int, default=logging.WARNING, help = '1 = Maximum Logging. 100 = Absolute Silence. 40 = Errors only. 10 = Basic Debug')
     opt.add_argument('-v', '--magnetic-variation', default=None, help='The magnetic variation(declination) of the current position')
     opt.add_argument('-a', '--altitude', default=None, help='The currently known altitude')
     opt.add_argument('-w', '--wind', help="Wind speed and direction 'speed_knots,dir_deg'")
     args = opt.parse_args()
 
-    if args.home:
-        if os.path.isdir(args.home):
-            os.environ['HOME'] = args.home
-        else:
-            print(("Invalid home directory: " + args.home))
-            sys.exit(1)
     rootlogger = logging.getLogger()
     rootlogger.setLevel(args.log_level)
 
-    if 'HOME' not in os.environ:
-        if 'HOMEPATH' in os.environ:
-            os.environ['HOME'] = os.environ['HOMEDRIVE'] + os.environ['HOMEPATH']
-        elif len(sys.argv) > 0:
-            os.environ['HOME'],_ = os.path.split(sys.argv[0])
-        elif os.path.isdir('C:\\'):
-            os.environ['HOME'] = 'C:\\'
-        else:
-            os.environ['HOME'] = '/'
-
-    dist_path = '/usr/local/lib/python2.7/dist-packages'
-    if os.path.isdir(dist_path):
-        sys.path.append('/usr/local/lib/python2.7/dist-packages')
-    Globals.SimulationMode = Globals.LIVE_LOGGING
-    if args.replay:
-        Globals.SimulationMode = Globals.SIM_REPLAY
-        Globals.LoggingPrefix = args.replay
-        log_start = "REPLAY: Sensors with logging prefix %s"%Globals.LoggingPrefix
+    if args.log_prefix:
+        log_prefix = args.log_prefix
     else:
-        if args.record:
-            Globals.SimulationMode = Globals.SIM_RECORD
         datestamp = Globals.datestamp()
-        Globals.LoggingPrefix = os.path.join('Logs', 'Sensors', datestamp)
-        log_start = "Sensors beginning with logging prefix %s"%Globals.LoggingPrefix
+        log_prefix = os.path.join('Logs', 'Sensors', datestamp)
+    log_start = "Sensors beginning with logging prefix %s"%log_prefix
     try:
-        os.makedirs(Globals.LoggingPrefix)
+        os.makedirs(log_prefix)
     except:
         pass
-    rootlogger.addHandler(logging.FileHandler(os.path.join(Globals.LoggingPrefix, 'info.log')))
+    rootlogger.addHandler(logging.FileHandler(os.path.join(log_prefix, 'info.log')))
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
     rootlogger.addHandler(console_handler)
     rootlogger.log(99, log_start)
 
-    master_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    master_sock.bind (("", args.local_port))
-    master_sock.setblocking (0)
-
-    sensors = CorrectedSensors.CorrectedSensors()
     try:
         _main_port = serial.Serial(args.serial_port, 115200, timeout=0)
-        command_channel = ArduinoCmdMessenger.CmdMessenger(_main_port, arg_delimiter='^')
     except:
-        # For test
-        command_channel = ArduinoCmdMessenger.CmdMessenger(None, arg_delimiter='^')
-        #raise RuntimeError("Cannot open control/sensor port %s"%args.serial_port)
+        raise RuntimeError("Cannot open control/sensor port %s"%args.serial_port)
+    command_channel = ArduinoCmdMessenger(arduino_messages)
+    command_channel.StartComs (_main_port)
 
-    sensors.initialize (command_channel)
 
     if args.wind:
         try:
@@ -242,8 +312,11 @@ if '__main__' == __name__:
     else:
         rootlogger.info("Wind = None")
 
-    slave = SenseControlSlave(command_channel, master_sock, sensors, args.master_address, args.master_port)
+    with open(args.config_file, 'r') as yml:
+        config = yaml.load (yml)
+        yml.close()
+    slave = SenseControlSlave(command_channel, config)
     while True:
-        sensors.Update()
-        slave.Update()
+        slave.ReadSensors()
+        slave.listen (timeout=0, loop=False)
         time.sleep(.01)

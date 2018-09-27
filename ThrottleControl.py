@@ -1,4 +1,4 @@
-# Copyright (C) 2015  Garrett Herschleb
+# Copyright (C) 2015-2018  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -14,19 +14,20 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
 class ThrottleControl:
-    def __init__(self, throttle_table, nthrottles):
+    def __init__(self, throttle_table, throttle_channels):
         self.controller = None
         self.last_val = 0.0
-        self._nthrottles = nthrottles
         self._throttle_table = throttle_table
+        self._throttle_channels = throttle_channels
 
     def SetServoController(self, c):
         self.controller = c
         self.controller.SetThrottleTable(self._throttle_table)
+        self.controller.SetThrottleChannels(self._throttle_channels)
 
     def Set(self, val):
         self.last_val = val
-        self.controller.SetThrottles (val, self._nthrottles)
+        self.controller.SetThrottles (val)
 
     def GetCurrent(self):
         return self.last_val

@@ -15,57 +15,60 @@
 
 import time, math, logging
 
-import SenseControlRemote
+from MicroServerComs import MicroServerComs
 
 logger=logging.getLogger(__name__)
 
-scmaster = None
-
-class Control:
-    def __init__(self, remotehost="localhost", remoteport=49001, localport=49000):
-        global scmaster
-        scmaster = SenseControlRemote.SenseControlMaster(localport, remotehost, remoteport)
-        self._lookup_tables = list()
+class Control(MicroServerComs):
+    def __init__(self):
+        MicroServerComs.__init__(self, "Control")
+        self._lookup_tables = dict()
         self._throttle_table = None
 
     def SetAnalogChannel(self, channel, val):
-        channel = int(channel)
-        if channel < 0 or channel >= len(self._lookup_tables) or self._lookup_tables[channel] == None:
-            raise RuntimeError ("Invalid channel set (%d)"%channel)
+        if not channel in self._lookup_tables:
+            raise RuntimeError ("Invalid channel set (%s)"%channel)
         scaled_val = look_up (val, self._lookup_tables[channel])
         scaled_val = int(round(scaled_val))
-        scmaster.SetAnalogChannel (channel, scaled_val)
+        self.channel = channel
+        self.value = scaled_val
+        self.publish()
 
     def SetDigitalChannel(self, channel, val):
-        channel = int(channel)
-        scaled_val = int(val)
-        scmaster.SetDigitalChannel (channel, scaled_val)
+        self.channel = channel
+        self.value = int(val)
+        self.publish()
 
-    def SetThrottles(self, throttles, nthrottles):
+    def SetThrottles(self, throttles):
         if isinstance(throttles,list):
             throttle_values = [int(round(look_up (t, self._throttle_table))) for t in throttles]
         else:
             value = int(round(look_up (throttles, self._throttle_table)))
-            throttle_values = [value for i in range(nthrottles)]
+            throttle_values = [value for i in range(len(self._throttle_channels))]
 
-        args = tuple(throttle_values)
-        scmaster.SetThrottles (*args)
+        if len(self._throttle_channels) != len(throttle_values):
+            raise RuntimeError ("SetThrottles: value list length does not match number of engines")
+        for ch,val in zip(self._throttle_channels,throttle_values):
+            self.channel = ch
+            self.value = val
+            self.publish()
         logger.log (3, "Setting throttles to %s", str(throttles))
 
     def SetThrottleTable(self, table):
         self._throttle_table = table
 
+    def SetThrottleChannels(self, chs):
+        self._throttle_channels = chs
+
     def SetLookupTable(self, channel, table):
-        while len(self._lookup_tables) <= channel:
-            self._lookup_tables.append(None)
         self._lookup_tables[channel] = table
 
     def initialize(self, filelines):
         return
 
     def GetLimits(self, channel):
-        if channel < 0 or channel >= len(self._lookup_tables) or self._lookup_tables[channel] == None:
-            raise RuntimeError ("Invalid channel set (%d)"%channel)
+        if not channel in self._lookup_tables:
+            raise RuntimeError ("Invalid channel set (%s)"%channel)
         mn = 9999999
         mx = -9999999
         for k,v in self._lookup_tables[channel]:
@@ -74,92 +77,84 @@ class Control:
         return (mn,mx)
 
 
-class Sensors:
+class Sensors(MicroServerComs):
     def __init__(self):
-        self._magnetic_variation = None
-        self._WindDirection = None
-        self._WindSpeed = None
-
+        MicroServerComs.__init__(self, "Autopilot")
+        self.gps_magnetic_variation = None
+        self._given_barometer = GivenBarometer()
+        self._known_altitude = KnownAltitude()
+        self._flight_mode = FlightModeSource()
+        self._wind_report = WindsAloftReport()
 
     def initialize(self, filelines):
         pass
 
     def FlightMode(self, mode, vertical = True):
-        scmaster.FlightMode (mode, vertical)
+        self._flight_mode.send (mode, vertial)
 
     def KnownAltitude(self, alt):
-        scmaster.KnownAltitude(alt)
+        self._known_altitude.send(alt)
 
     def KnownMagneticVariation(self, v):
-        self._magnetic_variation = v
-        scmaster.MagneticVariation(v)
+        self.gps_magnetic_variation = v
 
-    def WindVector(self, v):
-        self._corrected_sensors.WindVector (v)
-        self._WindDirection = math.atan2 (v.x, v.y)      # X & Y switched because aviation compass is shifted 90 degrees
-        self._WindSpeed = v.norm()
-        scmaster.WindVector(v)
-
-    def FlightParameters(self, *args):
-        scmaster.FlightParameters (*args)
-
-    def ThrottleLevel (self, l):
-        scmaster.ThrottleLevel(l)
+    def WindsAloftReport(self, lat, lng, altitude, timestamp, direction, speed):
+        self._wind_report.send (lat, lng, altitude, timestamp, direction, speed)
 
     def Altitude(self):
-        scmaster.Update()
-        return scmaster.Sensors['Altitude'][0]
+        self.listen (timeout=0, loop=False)
+        return self.altitude
 
     def Heading(self):
-        scmaster.Update()
-        return scmaster.Sensors['Heading'][0]
+        self.listen (timeout=0, loop=False)
+        return self.heading
 
     def Roll(self):
-        scmaster.Update()
-        return scmaster.Sensors['Roll'][0]
+        self.listen (timeout=0, loop=False)
+        return self.roll
 
     def RollRate(self):
-        scmaster.Update()
-        return scmaster.Sensors['RollRate'][0]
+        self.listen (timeout=0, loop=False)
+        return self.roll_rate
 
     def Pitch(self):
-        scmaster.Update()
-        return scmaster.Sensors['Pitch'][0]
+        self.listen (timeout=0, loop=False)
+        return self.pitch
 
     def PitchRate(self):
-        scmaster.Update()
-        return scmaster.Sensors['PitchRate'][0]
+        self.listen (timeout=0, loop=False)
+        return self.pitch_rate
 
     def Yaw(self):
-        scmaster.Update()
-        return scmaster.Sensors['Yaw'][0]
+        self.listen (timeout=0, loop=False)
+        return self.yaw
 
     def AirSpeed(self):
-        scmaster.Update()
-        return scmaster.Sensors['AirSpeed'][0]
+        self.listen (timeout=0, loop=False)
+        return self.airspeed
 
     def ClimbRate(self):
-        scmaster.Update()
-        return scmaster.Sensors['ClimbRate'][0]
+        self.listen (timeout=0, loop=False)
+        return self.climb_rate
 
     def Position(self):
-        scmaster.Update()
-        return scmaster.Sensors['Position'][0]
+        self.listen (timeout=0, loop=False)
+        return self.position
 
     def HeadingRateChange(self):
-        scmaster.Update()
-        return scmaster.Sensors['HeadingRate'][0]
+        self.listen (timeout=0, loop=False)
+        return self.turn_rate
 
     def TrueHeading(self):
-        scmaster.Update()
-        if self._magnetic_variation != None:
-            return scmaster.Sensors['Heading'][0] - self._magnetic_variation
+        self.listen (timeout=0, loop=False)
+        if self.gps_magnetic_variation is not None:
+            return self.heading - self.gps_magnetic_variation
         else:
-            return scmaster.Sensors['Heading'][0]
+            return self.heading
 
     def MagneticDeclination(self):
-        if self._magnetic_variation != None:
-            return self._magnetic_variation
+        if self.gps_magnetic_variation != None:
+            return self.gps_magnetic_variation
         else:
             return 0.0
 
@@ -168,25 +163,19 @@ class Sensors:
         return "vertical"
 
     def Time(self):
-        return time.time()
+        return self.last_update_time
 
     # Actual flight path in true coordinates
     def GroundTrack(self):
-        scmaster.Update()
-        return scmaster.Sensors['GroundTrack'][0]
+        self.listen (timeout=0, loop=False)
+        return self.groundTrack
 
     def GroundSpeed(self):
-        scmaster.Update()
-        return scmaster.Sensors['GroundSpeed'][0]
-
-    def WindSpeed(self):
-        return self._WindSpeed
-
-    def WindDirection(self):
-        return self._WindDirection
+        self.listen (timeout=0, loop=False)
+        return self.groundSpeed
 
     def AGL(self):
-        scmaster.Update()
+        self.listen (timeout=0, loop=False)
         raise RuntimeError("AGL sensor Not implemented")
 
     def Battery(self):
@@ -196,7 +185,49 @@ class Sensors:
         return 0
 
     def Snapshot(self):
-        return str(scmaster.Sensors)
+        return str(dir(self))
+
+class KnownAltitude(MicroServerComs):
+    def __init__(self):
+        self.known_altitude = None
+        MicroServerComs.__init__("KnownAltitude")
+
+    def send(self, alt):
+        self.known_altitude = alt
+        self.publish()
+
+class GivenBarometer(MicroServerComs):
+    def __init__(self):
+        self.given_barometer = None
+        MicroServerComs.__init__("GivenBarometer")
+
+    def send(self, b):
+        self.given_barometer = b
+        self.publish()
+
+class FlightModeSource(MicroServerComs):
+    def __init__(self):
+        self.flight_mode = None
+        self.vertical = None
+        MicroServerComs.__init__("FlightModeSource")
+
+    def send(self, m, vertical):
+        self.flight_mode = m
+        self.vertical = vertical
+        self.publish()
+
+class WindsAloftReport(MicroServerComs):
+    def __init__(self):
+        MicroServerComs.__init__("WindsAloftReport")
+
+    def send (self, lat, lng, altitude, timestamp, direction, speed):
+        self.wa_lat = lat
+        self.wa_lng = lng
+        self.wa_altitude = altitude
+        self.wa_time = timestamp
+        self.wa_heading = direction
+        self.wa_speed = speed
+        self.publish()
 
 def look_up(keyin, lookup_table, continuous=False, reverse=False):
     last_keypoint = None

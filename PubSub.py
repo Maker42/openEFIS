@@ -19,7 +19,7 @@ import threading
 import yaml
 
 MAX_DATA_SIZE=4096
-CONFIG_FILE='sensors_pubsub_internal.yml'
+CONFIG_FILE='sensors_pubsub.yml'
 
 def run_channel (*args, **kwargs):
     chconfig = args[0]

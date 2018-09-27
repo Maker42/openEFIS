@@ -34,7 +34,8 @@ class Roll(MicroServerComs):
             if self.last_time and self.flight_mode != Globals.FLIGHT_MODE_GROUND:
                 timediff = self.rotationsensors_updated - self.last_time
                 correction_factor = self.correction_rate * timediff
-                if self.roll_estimate is not None:
+                if self.roll_estimate is not None or \
+                        (self.vertical is None or (not self.vertical)):
                     self.roll += (self.r_y * timediff -
                                 (self.roll_estimate - self.roll) * correction_factor)
                     variance = abs(self.roll - self.roll_estimate)
@@ -47,7 +48,7 @@ class Roll(MicroServerComs):
                 print ("roll: %g => %g(%g)"%(self.r_y, self.roll, self.roll_confidence))
             self.last_time = self.rotationsensors_updated
         elif channel == 'GroundRoll':
-            if self.flight_mode == Globals.FLIGHT_MODE_GROUND:
+            if self.flight_mode == Globals.FLIGHT_MODE_GROUND or self.vertical:
                 self.roll = self.ground_roll
                 self.roll_confidence = 10.0 - self.roll * 0.5
                 self.timestamp = self.GroundRoll_updated

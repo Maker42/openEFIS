@@ -29,6 +29,7 @@ rotationsensors:
   - {addr: sensor_processing, port: 49031, protocol: udp, function: Pitch}
   - {addr: sensor_processing, port: 49032, protocol: udp, function: Roll}
   - {addr: sensor_processing, port: 49033, protocol: udp, function: RollRate}
+  - {addr: sensor_processing, port: 49034, protocol: udp, function: PitchRate}
 
 magneticsensors:
   output_values:
@@ -116,6 +117,20 @@ givenbarometer:
   - {addr: pubsub, port: 49100, protocol: udp, function: GivenBarometer}
   subs:
   - {addr: sensor_processing, port: 49101, protocol: udp, function: PressureFactors}
+
+flightmode:
+  output_values:
+      - flight_mode
+      - vertical
+  format: i
+  pubs:
+  - {addr: pubsub, port: 49110, protocol: udp, function: FlightModeSource}
+  subs:
+  - {addr: sensor_processing, port: 49111, protocol: udp, function: Heading}
+  - {addr: sensor_processing, port: 49112, protocol: udp, function: Pitch}
+  - {addr: sensor_processing, port: 49113, protocol: udp, function: Roll}
+  - {addr: sensor_processing, port: 49114, protocol: udp, function: RollRate}
+  - {addr: sensor_processing, port: 49115, protocol: udp, function: PitchRate}
 
 
 #
@@ -409,3 +424,17 @@ GroundVector:
       - {addr: panel, port: 48102, protocol: udp, function: Autopilot}
       - {addr: localhost, port: 48103, protocol: udp, function: EventDB}
       - {protocol: internal, function: WindEstimate}
+
+PitchRate:
+    output_values:
+        - timestamp
+        - pitch_rate
+        - pitch_rate_confidence
+    format: dff
+    pubs:
+      - {addr: pubsub, port: 48110, protocol: udp, function: PitchRate}
+    subs:
+      - {addr: panel, port: 48111, protocol: udp, function: Display}
+      - {addr: panel, port: 48112, protocol: udp, function: Autopilot}
+      - {addr: eventdb, port: 48113, protocol: udp, function: EventDB}
+

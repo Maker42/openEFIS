@@ -1,234 +1,282 @@
-#include <SoftwareSerial.h>
-#include <CmdMessenger.h>
 #include "Adafruit_BMP085_U.h"
 #include "Adafruit_L3GD20.h"
 #include "Adafruit_LSM303_U.h"
-#include "CheckSum.h"
-#include "CmdLog.h"
 
-// TODO: Make sure cmdMessenger doesn't block for sending commands
+#include "llc.h"
+
+// Attach a new CmdMessenger object to the default Serial port
+CmdMessenger cmdMessenger (Serial, '^', ';', '/');
 
 Adafruit_BMP085_Unified   bmpSensor(0);
 Adafruit_L3GD20           gyroSensor;
 Adafruit_LSM303_Accel_Unified   accSensor;
 Adafruit_LSM303_Mag_Unified   magSensor;
+Stream *gps = NULL;                    // Serial data stream
 
 bool bmpSensorEnabled = false;
 bool gyroSensorEnabled = false;
 bool accSensorEnabled = false;
 bool magSensorEnabled = false;
 
-const byte gpsRxPin = 2;
-const byte gpsTxPin = 4;
-
-// different commands to set the update rate from once a second (1 Hz) to 10 times a second (10Hz)
-// Note that these only control the rate at which the position is echoed, to actually speed up the
-// position fix you must also send one of the position fix rate commands below too.
-#define PMTK_SET_NMEA_UPDATE_100_MILLIHERTZ  "$PMTK220,10000*2F" // Once every 10 seconds, 100 millihertz.
-#define PMTK_SET_NMEA_UPDATE_200_MILLIHERTZ  "$PMTK220,5000*1B"  // Once every 5 seconds, 200 millihertz.
-#define PMTK_SET_NMEA_UPDATE_1HZ  "$PMTK220,1000*1F"
-#define PMTK_SET_NMEA_UPDATE_5HZ  "$PMTK220,200*2C"
-#define PMTK_SET_NMEA_UPDATE_10HZ "$PMTK220,100*2F"
-// Position fix update rate commands.
-#define PMTK_API_SET_FIX_CTL_100_MILLIHERTZ  "$PMTK300,10000,0,0,0,0*2C" // Once every 10 seconds, 100 millihertz.
-#define PMTK_API_SET_FIX_CTL_200_MILLIHERTZ  "$PMTK300,5000,0,0,0,0*18"  // Once every 5 seconds, 200 millihertz.
-#define PMTK_API_SET_FIX_CTL_1HZ  "$PMTK300,1000,0,0,0,0*1C"
-#define PMTK_API_SET_FIX_CTL_5HZ  "$PMTK300,200,0,0,0,0*2F"
-// Can't fix position faster than 5 times a second!
-
-
-#define PMTK_SET_BAUD_57600 "$PMTK251,57600*2C"
-#define PMTK_SET_BAUD_9600 "$PMTK251,9600*17"
-
-// turn on only the second sentence (GPRMC)
-#define PMTK_SET_NMEA_OUTPUT_RMCONLY "$PMTK314,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0*29"
-// turn on GPRMC and GGA
-#define PMTK_SET_NMEA_OUTPUT_RMCGGA "$PMTK314,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0*28"
-// turn on ALL THE DATA
-#define PMTK_SET_NMEA_OUTPUT_ALLDATA "$PMTK314,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0*28"
-// turn off output
-#define PMTK_SET_NMEA_OUTPUT_OFF "$PMTK314,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0*28"
-
-#define PMTK_ENABLE_SBAS "$PMTK313,1*2E"
-#define PMTK_ENABLE_WAAS "$PMTK301,2*2E"
-
-#define CMD_ANALOG_SET_CHANNEL  1
-#define CMD_DIGITAL_SET_CHANNEL 2
-#define CMD_10DOF_SENSOR_DATA   3
-#define CMD_GPS_DATA            4
-#define CMD_SET_THROTTLES       6
-
-#define MAX_INDEPENDENT_THROTTLES 6
-#define MAX_PWM_VALUE           255
-
-CmdMessenger cmdMessenger (Serial, '^', ';', '\\');
-
-// set up a new serial object
-//SoftwareSerial gpsSerial (gpsRxPin, gpsTxPin);
-
 char    gps_line[2][80];
 int     current_gps_line = 0, last_gps_line = 1, gps_index = 0;
 
-#define NACHANS  6
-int     analog_pin_mapping[NACHANS] = {2, 3, 4, 5, 6, 7};
-#define NDCHANS  2
-int     digital_pin_mapping[NDCHANS] = {25, 26};
-
-int     throttle_pin_mapping[MAX_INDEPENDENT_THROTTLES] = {8, 9, 10, 11, 12, 13};
+uint8_t function2chan[num_functions];
 
 char    output_line[80];
 
-void SetThrottles()
-{
-  int16_t   nthrottles, val[MAX_INDEPENDENT_THROTTLES], chksum = -1;
-  bool      valid = true;
-  int       i;
+sChannel    channels[MAX_CHANNELS];
 
-  nthrottles = cmdMessenger.readInt16Arg();
-  if ((nthrottles <= 0) || (nthrottles > MAX_INDEPENDENT_THROTTLES)) valid = false;
-  else
+void Onsetup_digital_sensor()
+{
+  int16_t   chan, pin, pullup;
+  int32_t   period;
+  chan = cmdMessenger.readInt16Arg();
+  if ((chan >= NELEMENTS(channels)) || (chan < 0))
   {
-    for (i = 0;i < nthrottles; i++)
+    cmdMessenger.sendCmd(nack, "Digital Invalid channel");
+  } else
+  {
+    pin = cmdMessenger.readInt16Arg();
+    period = cmdMessenger.readInt32Arg();
+    pullup = cmdMessenger.readInt16Arg();
+    channels[chan].pin = pin;
+    channels[chan].period = period;
+    channels[chan].function = 'd';
+    channels[chan].next_time = millis() + period;
+    if (pullup)
     {
-      val[i] = cmdMessenger.readInt16Arg();
-      if ((val[i] < 0) || (val[i] > MAX_PWM_VALUE)) valid = false;
+        pinMode (pin, INPUT_PULLUP);
+    } else
+    {
+        pinMode (pin, INPUT);
     }
   }
-  chksum = cmdMessenger.readInt16Arg();
-  CheckSumStart(chksum);
-  CheckSumDigest (chksum, sizeof(nthrottles), &nthrottles);
-  for (i = 0; i < nthrottles; i++)
-  {
-      CheckSumDigest(chksum, sizeof (val[0]), val + i);
-  }
-  if (!CheckSumIsValid(chksum))     valid = false;
+}
 
-  if (valid)
+void Onsetup_analog_sensor()
+{
+  int16_t   chan, pin;
+  int32_t   period;
+  chan = cmdMessenger.readInt16Arg();
+  if ((chan >= NELEMENTS(channels)) || (chan < 0))
   {
-    for (i = 0; i < nthrottles; i++)
-    {
-        analogWrite(throttle_pin_mapping[i], val[i]);
-    }
-  }
-  if (!valid)
+    cmdMessenger.sendCmd(nack, "Analog Invalid channel");
+  } else
   {
-    sprintf (output_line, "Invalid Throttle: %d, %d, %d", nthrottles, val[0], chksum);
-    cmdLog (cmdMessenger, 30, output_line);
+    pin = cmdMessenger.readInt16Arg();
+    period = cmdMessenger.readInt32Arg();
+    channels[chan].function = 'n';
+    channels[chan].pin = pin;
+    channels[chan].period = period;
+    channels[chan].next_time = millis() + period;
   }
 }
 
-void AnalogSetChannel()
+void Onsetup_i2c_sensor()
 {
-  int16_t   chan = -1, val = -1, chksum = -1;
-  bool      valid = true;
+  int16_t   chan;
+  char      function;
+  int32_t   period;
+  chan = cmdMessenger.readInt16Arg();
+  if ((chan >= NELEMENTS(channels)) || (chan < 0))
+  {
+    cmdMessenger.sendCmd(nack, "I2C Invalid channel");
+  } else
+  {
+      bool good = true;
+      function = cmdMessenger.readCharArg();
+      period = cmdMessenger.readInt32Arg();
+      channels[chan].function = function;
+      channels[chan].period = period;
+      channels[chan].next_time = millis() + period;
+      switch (function)
+      {
+        case 'a':
+          function2chan[accel_function] = chan;
+          break;
+        case 'r':
+          function2chan[rotation_function] = chan;
+          break;
+        case 'm':
+          function2chan[magnetic_function] = chan;
+          break;
+        case 'p':
+          function2chan[pressure_function] = chan;
+          break;
+        case 't':
+          function2chan[temp_function] = chan;
+          break;
+        default:
+            good = false;
+            cmdMessenger.sendCmd(nack, "Invalid I2C funciton");
+            break;
+      }
+      if (good) cmdMessenger.sendCmd(ack);
+  }
+}
+void Onsetup_spi_sensor()
+{
+    cmdMessenger.sendCmd(nack, "SPI sensors unimplemented");
+}
+
+void Onsetup_serial_sensor()
+{
+  int16_t   chan;
+  char      function;
+  int16_t   port_number;
+  int32_t   period;
 
   chan = cmdMessenger.readInt16Arg();
-  val = cmdMessenger.readInt16Arg();
-  chksum = cmdMessenger.readInt16Arg();
-  CheckSumStart(chksum);
-  CheckSumDigest(chksum, sizeof (chan), &chan);
-  CheckSumDigest(chksum, sizeof (val), &val);
-  if (!CheckSumIsValid(chksum))     valid = false;
-
-  if (valid && (chan >= 0) && (val >= 0) && (val <= MAX_PWM_VALUE))
+  if ((chan >= NELEMENTS(channels)) || (chan < 0))
   {
-      if (chan < NACHANS)
+    cmdMessenger.sendCmd(nack, "Serial Invalid channel");
+  } else
+  {
+      bool good = true;
+      function = cmdMessenger.readCharArg();
+      port_number = cmdMessenger.readInt16Arg();
+      period = cmdMessenger.readInt32Arg();
+      channels[chan].function = function;
+      channels[chan].pin = port_number;
+      channels[chan].period = period;
+      channels[chan].next_time = millis() + period;
+      switch (function)
       {
-        analogWrite(analog_pin_mapping[chan], val);
-        sprintf (output_line, "ASet[%d] = %d", chan, val);
-        cmdLog (cmdMessenger, 1, output_line);
-        valid = true;
-      } else valid = false;
-  } else valid = false;
-  if (!valid)
-  {
-    sprintf (output_line, "Invalid ASet: %d, %d, %d", chan, val, chksum);
-    cmdLog (cmdMessenger, 30, output_line);
+        case 'g':
+          function2chan[gps_function] = chan;
+          break;
+        default:
+            good = false;
+            cmdMessenger.sendCmd(nack, "Invalid Serial funciton");
+            break;
+      }
+      if (good)
+      {
+        switch (port_number)
+        {
+          case 1:
+            gps = &Serial1;
+            Serial1.begin(9600);
+            break;
+          case 2:
+            gps = &Serial2;
+            Serial2.begin(9600);
+            break;
+          case 3:
+            gps = &Serial3;
+            Serial3.begin(9600);
+            break;
+          default:
+            good = false;
+            cmdMessenger.sendCmd(nack, "Invalid Serial Port Number");
+        }
+        gps->write (PMTK_SET_BAUD_9600);
+        gps->write (PMTK_SET_NMEA_OUTPUT_RMCGGA);
+        gps->write (PMTK_SET_NMEA_UPDATE_1HZ);
+        gps->write (PMTK_API_SET_FIX_CTL_1HZ);
+      }
+      if (good) cmdMessenger.sendCmd(ack);
   }
 }
 
-void DigitalSetChannel()
+void Onsetup_analog_output()
 {
-  int16_t   chan, val, chksum;
-  bool      valid = true;
-
-  chan = cmdMessenger.readInt16Arg();
-  val = cmdMessenger.readInt16Arg();
-  chksum = cmdMessenger.readInt16Arg();
-  CheckSumStart(chksum);
-  CheckSumDigest(chksum, sizeof (chan), &chan);
-  CheckSumDigest(chksum, sizeof (val), &val);
-  if (!CheckSumIsValid(chksum))     valid = false;
-
-  if (valid && (chan >= 0) && (val >= 0) && (val < 256))
-  {
-      if (chan < NDCHANS)
-      {
-        digitalWrite(digital_pin_mapping[chan], val == 0 ? 0 : 1);
-        sprintf (output_line, "DSet[%d] = %d", chan, val);
-        cmdLog (cmdMessenger, 1, output_line);
-        valid = true;
-      } else valid = false;
-  } else valid = false;
-  if (!valid)
-  {
-    cmdLog (cmdMessenger, 30, "Invalid Digital Cmd");
-  }
+  int16_t   pin, value;
+  pin = cmdMessenger.readInt16Arg();
+  value = cmdMessenger.readInt16Arg();
+  pinMode (pin, OUTPUT);
+  analogWrite (pin, value);
 }
 
-void BadMsgHandler()
+void Onsetup_digital_output()
 {
-  cmdLog (cmdMessenger, 30, "Invalid message ID received");
+  int16_t   pin, value;
+  pin = cmdMessenger.readInt16Arg();
+  value = cmdMessenger.readInt16Arg();
+  pinMode (pin, OUTPUT);
+  digitalWrite (pin, value);
 }
 
-void setup() {
+void Onset_analog_output()
+{
+  int16_t   pin, value;
+  pin = cmdMessenger.readInt16Arg();
+  value = cmdMessenger.readInt16Arg();
+  analogWrite (pin, value);
+}
+
+void Onset_digital_output()
+{
+  int16_t   pin, value;
+  pin = cmdMessenger.readInt16Arg();
+  value = cmdMessenger.readInt16Arg();
+  digitalWrite (pin, value);
+}
+
+
+void OnUnknownCommand()
+{
+    cmdMessenger.sendCmd(nack, "Unknown Command");
+}
+
+// Callbacks define on which received commands we take action
+void attachCommandCallbacks()
+{
+  // Attach callback methods
+  cmdMessenger.attach(OnUnknownCommand);
+  cmdMessenger.attach(setup_digital_sensor, Onsetup_digital_sensor);
+  cmdMessenger.attach(setup_analog_sensor, Onsetup_analog_sensor);
+  cmdMessenger.attach(setup_i2c_sensor, Onsetup_i2c_sensor);
+  cmdMessenger.attach(setup_spi_sensor, Onsetup_spi_sensor);
+  cmdMessenger.attach(setup_serial_sensor, Onsetup_serial_sensor);
+  cmdMessenger.attach(setup_analog_output, Onsetup_analog_output);
+  cmdMessenger.attach(setup_digital_output, Onsetup_digital_output);
+  cmdMessenger.attach(set_analog_output, Onset_analog_output);
+  cmdMessenger.attach(set_digital_output, Onset_digital_output);
+  cmdMessenger.printLfCr(false); 
+}
+
+
+void cmdLog(unsigned level, const char *s)
+{
+  int16_t checksum = 0;
+  cmdMessenger.sendCmdStart(send_log);
+  cmdMessenger.sendCmdArg (level);
+  cmdMessenger.sendCmdEscArg (s);
+  cmdMessenger.sendCmdEnd();
+}
+
+
+void setup()
+{
   // put your setup code here, to run once:
-  pinMode(gpsRxPin, INPUT);
-  pinMode(gpsTxPin, OUTPUT);
-  digitalWrite(gpsTxPin, HIGH);
-//  gpsSerial.begin(9600);
-//  delay(100);
-//  gpsSerial.println("");
-//  gpsSerial.println("");
-//  gpsSerial.println("");
-//  //gpsSerial.println(PMTK_SET_NMEA_OUTPUT_RMCGGA);
-//  gpsSerial.println(PMTK_ENABLE_WAAS);
-  //gpsSerial.println(PMTK_SET_NMEA_UPDATE_1HZ);
+  memset (channels, 0, sizeof (channels));
+  memset (function2chan, 0xff, sizeof (function2chan));
   gps_line[current_gps_line][0] = 0;
   gps_line[last_gps_line][0] = 0;
   gps_index = 0;
   Serial.begin(115200);
+  cmdLog (99, "Sensors Have Started");
   bmpSensorEnabled = bmpSensor.begin();
   gyroSensorEnabled = gyroSensor.begin();
   accSensorEnabled = accSensor.begin();
   magSensorEnabled = magSensor.begin();
 
-  for (int i = 0; i < NACHANS; i++)
-  {
-    pinMode(analog_pin_mapping[i], OUTPUT);
-    analogWrite (analog_pin_mapping[i], 128);
-  }
-  for (int i = 0; i < NDCHANS; i++)
-  {
-    pinMode(digital_pin_mapping[i], OUTPUT);
-    digitalWrite(digital_pin_mapping[i], 0);
-  }
-
-  cmdMessenger.attach(CMD_ANALOG_SET_CHANNEL, AnalogSetChannel);
-  cmdMessenger.attach(CMD_DIGITAL_SET_CHANNEL, DigitalSetChannel);
-  cmdMessenger.attach(BadMsgHandler);
-  cmdMessenger.printLfCr();
+  attachCommandCallbacks();
 }
 
-void loop() {
+void loop()
+{
   float   pressure, temperature;
   sensors_event_t   event;
+  long  sleeptime = 0x7ffffff;
+  pChannel          pch;
   
   // put your main code here, to run repeatedly:
-#if 0
-  while (gpsSerial.available())
+  while (gps && gps->available())
   {
-    char c = gpsSerial.read();
+    char c = gps->read();
     gps_line[current_gps_line][gps_index++] = c;
     //Serial.print ("gps_line[");
     //Serial.print (current_gps_line);
@@ -243,69 +291,161 @@ void loop() {
       last_gps_line = current_gps_line;
       current_gps_line = temp;
       gps_index = 0;
-      cmdMessenger.sendCmd(CMD_GPS_DATA, gps_line[last_gps_line]);
+      cmdMessenger.sendCmdStart (sensor_reading);
+      cmdMessenger.sendCmdArg (function2chan [gps_function]);
+      cmdMessenger.sendCmdArg (gps_line[last_gps_line]);
+      cmdMessenger.sendCmdArg (millis());
+      cmdMessenger.sendCmdEnd ();
     }
   }
-#endif
 
   cmdMessenger.feedinSerialData();
 
-  int           attitudeIndex = 0;
+  unsigned long ms = millis();
+  long          timediff;
+  int           channel;
   // Get 10DOF readings
-  if (bmpSensorEnabled)
+  if ((bmpSensorEnabled) && (function2chan[pressure_function] != 0xff))
   {
-    bmpSensor.getPressure(&pressure);
-    bmpSensor.getTemperature(&temperature);
-    attitudeIndex += sprintf (output_line+attitudeIndex, "%f,%f", pressure, temperature);
+    channel = function2chan[pressure_function];
+    pch = &(channels[channel]);
+    timediff = (long)pch->next_time - (long)ms;
+    if (timediff <= 0)
+    {
+        bmpSensor.getPressure(&pressure);
+        cmdMessenger.sendCmdStart (sensor_reading);
+        cmdMessenger.sendCmdArg (channel);
+        cmdMessenger.sendCmdArg (pressure);
+        cmdMessenger.sendCmdArg ((float)0); // Pitot pressure not implemented yet
+        cmdMessenger.sendCmdArg (ms);
+        cmdMessenger.sendCmdEnd ();
+        pch->next_time += pch->period;
+        timediff += pch->period;
+        if (timediff < sleeptime)
+        {
+            sleeptime = timediff;
+        }
+    }
   }
-  else
+  if ((bmpSensorEnabled) && (function2chan[temp_function] != 0xff))
   {
-    attitudeIndex += sprintf (output_line+attitudeIndex, ",");
+    channel = function2chan[temp_function];
+    pch = &(channels[channel]);
+    timediff = (long)pch->next_time - (long)ms;
+    if (timediff <= 0)
+    {
+        bmpSensor.getTemperature(&temperature);
+        cmdMessenger.sendCmdStart (sensor_reading);
+        cmdMessenger.sendCmdArg (channel);
+        cmdMessenger.sendCmdArg (temperature);
+        cmdMessenger.sendCmdEnd ();
+        pch->next_time += pch->period;
+        timediff += pch->period;
+        if (timediff < sleeptime)
+        {
+            sleeptime = timediff;
+        }
+    }
   }
-  if (gyroSensorEnabled)
+  if ((gyroSensorEnabled) && (function2chan[rotation_function] != 0xff))
   {
-    gyroSensor.read();
-    attitudeIndex += sprintf (output_line+attitudeIndex, ",%f,%f,%f",
-                                gyroSensor.data.x,    // TODO: Assign proper x,y,z to pitch, roll, yaw.
-                                gyroSensor.data.y,
-                                gyroSensor.data.z);
+    channel = function2chan[rotation_function];
+    pch = &(channels[channel]);
+    timediff = (long)pch->next_time - (long)ms;
+    if (timediff <= 0)
+    {
+        gyroSensor.read();
+        cmdMessenger.sendCmdStart (sensor_reading);
+        cmdMessenger.sendCmdArg (channel);
+        cmdMessenger.sendCmdArg (gyroSensor.data.x);
+        cmdMessenger.sendCmdArg (gyroSensor.data.y);
+        cmdMessenger.sendCmdArg (gyroSensor.data.z);
+        cmdMessenger.sendCmdArg (ms);
+        cmdMessenger.sendCmdEnd ();
+        pch->next_time += pch->period;
+        timediff += pch->period;
+        if (timediff < sleeptime)
+        {
+            sleeptime = timediff;
+        }
+    }
   }
-  else
+  if ((accSensorEnabled) && (function2chan[accel_function] != 0xff))
   {
-    attitudeIndex += sprintf (output_line+attitudeIndex, ",,,");
+    channel = function2chan[accel_function];
+    pch = &(channels[channel]);
+    timediff = (long)pch->next_time - (long)ms;
+    if (timediff <= 0)
+    {
+        accSensor.getEvent(&event);
+        cmdMessenger.sendCmdStart (sensor_reading);
+        cmdMessenger.sendCmdArg (channel);
+        cmdMessenger.sendCmdArg (event.orientation.x);
+        cmdMessenger.sendCmdArg (event.orientation.y);
+        cmdMessenger.sendCmdArg (event.orientation.z);
+        cmdMessenger.sendCmdArg (event.timestamp);
+        cmdMessenger.sendCmdEnd ();
+        pch->next_time += pch->period;
+        timediff += pch->period;
+        if (timediff < sleeptime)
+        {
+            sleeptime = timediff;
+        }
+    }
   }
-  if (accSensorEnabled)
+  if ((magSensorEnabled) && (function2chan[magnetic_function] != 0xff))
   {
-    accSensor.getEvent(&event);
-    attitudeIndex += sprintf (output_line+attitudeIndex, ",%f,%f,%f",
-                                event.acceleration.x,
-                                event.acceleration.y,
-                                event.acceleration.z);
+    channel = function2chan[magnetic_function];
+    pch = &(channels[channel]);
+    timediff = (long)pch->next_time - (long)ms;
+    if (timediff <= 0)
+    {
+        magSensor.getEvent(&event);
+        cmdMessenger.sendCmdStart (sensor_reading);
+        cmdMessenger.sendCmdArg (channel);
+        cmdMessenger.sendCmdArg (event.magnetic.x);
+        cmdMessenger.sendCmdArg (event.magnetic.y);
+        cmdMessenger.sendCmdArg (event.magnetic.z);
+        cmdMessenger.sendCmdArg (event.timestamp);
+        cmdMessenger.sendCmdEnd ();
+        pch->next_time += pch->period;
+        timediff += pch->period;
+        if (timediff < sleeptime)
+        {
+            sleeptime = timediff;
+        }
+    }
   }
-  else
+  ms = millis();
+  for (channel = 0; channel < NELEMENTS(channels); channel++)
   {
-    attitudeIndex += sprintf (output_line+attitudeIndex, ",,,");
+    pch = &(channels[channel]);
+    if ((pch->function == 'd') || (pch->function == 'n'))
+    {
+        timediff = (long)pch->next_time - (long)ms;
+        if (timediff <= 0)
+        {
+            cmdMessenger.sendCmdStart (sensor_reading);
+            cmdMessenger.sendCmdArg (channel);
+            if (pch->function == 'd')
+            {
+                cmdMessenger.sendCmdArg (digitalRead(pch->pin));
+            } else
+            {
+                cmdMessenger.sendCmdArg (analogRead(pch->pin));
+            }
+            cmdMessenger.sendCmdArg (ms);
+            cmdMessenger.sendCmdEnd ();
+            
+            pch->next_time += pch->period;
+            timediff = (long)pch->next_time - (long)ms;
+        }
+        if (timediff < sleeptime)
+        {
+            sleeptime = timediff;
+        }
+    }
   }
-  if (magSensorEnabled)
-  {
-    accSensor.getEvent(&event);
-    attitudeIndex += sprintf (output_line+attitudeIndex, ",%f,%f,%f",
-                                event.magnetic.x,
-                                event.magnetic.y,
-                                event.magnetic.z);    
-  }
-  else
-  {
-    attitudeIndex += sprintf (output_line+attitudeIndex, ",,,");
-    event.timestamp = millis();
-  }
-  attitudeIndex += sprintf (output_line+attitudeIndex, ",%lu", event.timestamp);
-  int16_t   chksum = 0;
-  CheckSumStart(chksum);
-  CheckSumDigest (chksum, attitudeIndex, output_line);
-  cmdMessenger.sendCmdStart (CMD_10DOF_SENSOR_DATA);
-  cmdMessenger.sendCmdEscArg(output_line);
-  cmdMessenger.sendCmdArg(chksum);
-  cmdMessenger.sendCmdEnd();
-  delay (10);
+  if (sleeptime > 100) sleeptime = 100;
+  if (sleeptime > 0) delay (sleeptime);
 }

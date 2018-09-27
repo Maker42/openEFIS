@@ -23,6 +23,7 @@ class Pitch(MicroServerComs):
         self.last_time = None
         self.pitch = None
         self.pitch_estimate = None
+        self.vertical = None
         self.flight_mode = Globals.FLIGHT_MODE_GROUND
         self.pitch_confidence = 0.0
         # Default 1 degree per minute
@@ -34,7 +35,8 @@ class Pitch(MicroServerComs):
             if self.last_time and self.flight_mode != Globals.FLIGHT_MODE_GROUND:
                 timediff = self.rotationsensors_updated - self.last_time
                 correction_factor = self.correction_rate * timediff
-                if self.pitch_estimate is not None:
+                if self.pitch_estimate is not None or \
+                        (self.vertical is None or (not self.vertical)):
                     self.pitch += (self.r_x * timediff -
                                 (self.pitch_estimate - self.pitch) * correction_factor)
                     variance = abs(self.pitch - self.pitch_estimate)
@@ -47,7 +49,7 @@ class Pitch(MicroServerComs):
                 print ("Pitch: %g => %g(%g)"%(self.r_x, self.pitch, self.pitch_confidence))
             self.last_time = self.rotationsensors_updated
         elif channel == 'PitchEstimate':
-            if self.flight_mode == Globals.FLIGHT_MODE_GROUND:
+            if self.flight_mode == Globals.FLIGHT_MODE_GROUND or self.vertical:
                 self.pitch = self.pitch_estimate
                 self.pitch_confidence = 10.0 - self.pitch * 0.5
                 self.timestamp = self.PitchEstimate_updated

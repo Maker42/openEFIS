@@ -21,7 +21,7 @@ import InternalPublisher
 _pubsub_config = None
 
 class MicroServerComs:
-    def __init__(self, function, input_mode='injection', channel=None):
+    def __init__(self, function, input_mode='injection', channel=None, timeout=None):
         global _pubsub_config
         self.pubchannel = None
         self.output_values = None
@@ -48,57 +48,65 @@ class MicroServerComs:
             #print ("subs_cfg = %s"%str(subs_cfg))
             if chname == self.channel:
                 # Describing my listeners
-                for pipe in subs_cfg:
-                    if pipe['protocol'] == 'internal':
-                        self.has_internal_listeners = True
-                    else:
-                        self.has_external_listeners = True
-                for pipe in pubs_cfg:
-                    if self.function == pipe['function']:
-                        if self.pubchannel:
-                            raise RuntimeError ("Duplicate pub channel found for \
-                                    function %s"%pipe['function'])
-                        protocol = pipe['protocol']
-                        if protocol != 'internal':
-                            port = pipe['port']
-                            addr = pipe['addr']
-                            self.output_values = chcfg['output_values']
-                            self.output_format = chcfg['format']
-                            if protocol == 'udp':
-                                self.pubchannel = socket.socket(type=socket.SOCK_DGRAM)
-                            else:
-                                self.pubchannel = socket.socket(type=socket.SOCK_STREAM)
-                            self.pubchannel.connect ((addr,port))
+                if subs_cfg is not None:
+                    for pipe in subs_cfg:
+                        if pipe['protocol'] == 'internal':
+                            self.has_internal_listeners = True
+                        else:
+                            self.has_external_listeners = True
+                if pubs_cfg is not None:
+                    for pipe in pubs_cfg:
+                        if self.function == pipe['function']:
+                            if self.pubchannel:
+                                raise RuntimeError ("Duplicate pub channel found for \
+                                        function %s"%pipe['function'])
+                            protocol = pipe['protocol']
+                            if protocol != 'internal':
+                                port = pipe['port']
+                                addr = pipe['addr']
+                                self.output_values = chcfg['output_values']
+                                self.output_format = chcfg['format']
+                                if protocol == 'udp':
+                                    self.pubchannel = socket.socket(type=socket.SOCK_DGRAM)
+                                else:
+                                    self.pubchannel = socket.socket(type=socket.SOCK_STREAM)
+                                self.pubchannel.connect ((addr,port))
             else:
-                for pipe in subs_cfg:
-                    if self.function == pipe['function']:
-                        protocol = pipe['protocol']
-                        if protocol != 'internal':
-                            port = pipe['port']
-                            addr = pipe['addr']
-                            if protocol == 'udp':
-                                subchannel = socket.socket(type=socket.SOCK_DGRAM)
-                            else:
-                                subchannel = socket.socket(type=socket.SOCK_STREAM)
-                            subchannel.bind ((addr,port))
-                            self.subchannels[subchannel.fileno()] = ((subchannel,self.channel,chname
-                                                                      ,chcfg['output_values']
-                                                                      ,chcfg['format']
-                                                                      ))
+                if subs_cfg is not None:
+                    for pipe in subs_cfg:
+                        if self.function == pipe['function']:
+                            protocol = pipe['protocol']
+                            if protocol != 'internal':
+                                port = pipe['port']
+                                addr = pipe['addr']
+                                if protocol == 'udp':
+                                    subchannel = socket.socket(type=socket.SOCK_DGRAM)
+                                else:
+                                    subchannel = socket.socket(type=socket.SOCK_STREAM)
+                                subchannel.bind ((addr,port))
+                                subchannel.settimeout (timeout)
+                                self.subchannels[subchannel.fileno()] = ((subchannel,self.channel,chname
+                                                                          ,chcfg['output_values']
+                                                                          ,chcfg['format']
+                                                                          ))
         if InternalPublisher.TheInternalPublisher is not None:
             InternalPublisher.TheInternalPublisher.register_channel (self.channel, self, self.subchannels)
 
     def __str__(self):
         return "pub=%s, subs=%s"%(str(self.pubchannel), str(self.subchannels))
 
-    def listen(self):
+    def listen(self, timeout=None, loop=True):
         rsocks = list(self.subchannels.keys())
         if self.pubchannel is not None:
             xsocks = rsocks + [self.pubchannel.fileno()]
         else:
             xsocks = rsocks
         while True:
-            r,w,x = select.select (rsocks, [], xsocks)
+            got_data = False
+            if timeout is None:
+                r,w,x = select.select (rsocks, [], xsocks)
+            else:
+                r,w,x = select.select (rsocks, [], xsocks, timeout)
             for errfd in x:
                 if errfd in self.subchannels:
                     raise RuntimeError ()
@@ -108,6 +116,9 @@ class MicroServerComs:
                     raise RuntimeError ()
             for rfd in r:
                 self.data_ready(rfd)
+                got_data = True
+            if not (loop or got_data):
+                break
 
     def data_ready(self, rfd):
         if rfd in self.subchannels:
@@ -122,6 +133,7 @@ class MicroServerComs:
                         # Special timestamp handling
                         setattr (self, ts_name, value)
                         timestamped = True
+                        self.last_update_time = value
                     else:
                         setattr (self, vname, value)
                 if not timestamped:
