@@ -86,7 +86,7 @@ def ParseNMEAStrings(nmea, data_container):
                     data_container.gps_lng = None
                     data_container.gps_altitude = None
                     data_container.gps_signal_quality = 0
-                    logger.debug("NMEA got GGA with no signal quality")
+                    logger.error("NMEA got GGA with no signal quality")
             except Exception as e:
                 logger.debug("Unexpected GGA from GPS: %s (%s)", str(fields), str(e))
             data_container.GGAUpdate = True

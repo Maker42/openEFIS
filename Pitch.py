@@ -17,11 +17,13 @@
 import Globals
 from MicroServerComs import MicroServerComs
 
+import Common.util as util
+
 class Pitch(MicroServerComs):
     def __init__(self, cor_rate=1.0, conf_mult=1.0):
         MicroServerComs.__init__(self, "Pitch")
         self.last_time = None
-        self.pitch = None
+        self.raw_pitch = 0.0
         self.pitch_estimate = None
         self.vertical = None
         self.flight_mode = Globals.FLIGHT_MODE_GROUND
@@ -29,6 +31,7 @@ class Pitch(MicroServerComs):
         # Default 1 degree per minute
         self.correction_rate = cor_rate / 60.0
         self.confidence_multiplier = conf_mult
+        self.filter_ratio = .99
 
     def updated(self, channel):
         if channel == 'rotationsensors':
@@ -37,19 +40,22 @@ class Pitch(MicroServerComs):
                 correction_factor = self.correction_rate * timediff
                 if self.pitch_estimate is not None or \
                         (self.vertical is None or (not self.vertical)):
-                    self.pitch += (self.r_x * timediff -
-                                (self.pitch_estimate - self.pitch) * correction_factor)
+                    self.raw_pitch += (self.r_x * timediff -
+                                (self.pitch_estimate - self.raw_pitch) * correction_factor)
+                else:
+                    self.raw_pitch += (self.r_x * timediff)
+                    self.pitch_confidence = 5.0
+                self.pitch = self.pitch * self.filter_ratio + self.raw_pitch * (1 - self.filter_ratio)
+                if self.pitch_estimate is not None or \
+                        (self.vertical is None or (not self.vertical)):
                     variance = abs(self.pitch - self.pitch_estimate)
                     self.pitch_confidence = 10.0 - variance * self.confidence_multiplier
-                else:
-                    self.pitch += (self.r_x * timediff)
-                    self.pitch_confidence = 5.0
                 self.timestamp = self.rotationsensors_updated
                 self.publish ()
                 print ("Pitch: %g => %g(%g)"%(self.r_x, self.pitch, self.pitch_confidence))
             self.last_time = self.rotationsensors_updated
         elif channel == 'PitchEstimate':
-            if self.flight_mode == Globals.FLIGHT_MODE_GROUND or self.vertical:
+            if self.flight_mode == Globals.FLIGHT_MODE_GROUND:
                 self.pitch = self.pitch_estimate
                 self.pitch_confidence = 10.0 - self.pitch * 0.5
                 self.timestamp = self.PitchEstimate_updated

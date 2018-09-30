@@ -305,7 +305,7 @@ def make_timestamp (board_ts):
     if time_offset == 0:
         return time.time()
     else:
-        return board_ts + time_offset
+        return float(board_ts)/1000.0 + time_offset
 
 if '__main__' == __name__:
     opt = argparse.ArgumentParser(description='Control/sensor slave process')

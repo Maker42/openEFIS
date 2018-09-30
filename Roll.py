@@ -16,15 +16,19 @@
 import Globals
 from MicroServerComs import MicroServerComs
 
+import Common.util as util
+
 class Roll(MicroServerComs):
     def __init__(self, cor_rate=1.0, conf_mult=1.0):
         MicroServerComs.__init__(self, "Roll")
         self.last_time = None
-        self.roll = None
+        self.raw_roll = 0.0
+        self.roll = 0.0
         self.ground_roll = None
         self.roll_estimate = None
         self.flight_mode = Globals.FLIGHT_MODE_GROUND
         self.roll_confidence = 0.0
+        self.filter_ratio = .99
         # Default 1 degree per minute
         self.correction_rate = cor_rate / 60.0
         self.confidence_multiplier = conf_mult
@@ -36,19 +40,22 @@ class Roll(MicroServerComs):
                 correction_factor = self.correction_rate * timediff
                 if self.roll_estimate is not None or \
                         (self.vertical is None or (not self.vertical)):
-                    self.roll += (self.r_y * timediff -
-                                (self.roll_estimate - self.roll) * correction_factor)
+                    self.raw_roll += (self.r_y * timediff -
+                                (self.roll_estimate - self.raw_roll) * correction_factor)
+                else:
+                    self.raw_roll += (self.r_y * timediff)
+                    self.roll_confidence = 5.0
+                self.roll = self.roll * self.filter_ratio + self.raw_roll * (1 - self.filter_ratio)
+                if self.roll_estimate is not None or \
+                        (self.vertical is None or (not self.vertical)):
                     variance = abs(self.roll - self.roll_estimate)
                     self.roll_confidence = 10.0 - variance * self.confidence_multiplier
-                else:
-                    self.roll += (self.r_y * timediff)
-                    self.roll_confidence = 5.0
                 self.timestamp = self.rotationsensors_updated
+                print ("Roll: %g => %g(%g)"%(self.r_y, self.roll, self.roll_confidence))
                 self.publish ()
-                print ("roll: %g => %g(%g)"%(self.r_y, self.roll, self.roll_confidence))
             self.last_time = self.rotationsensors_updated
         elif channel == 'GroundRoll':
-            if self.flight_mode == Globals.FLIGHT_MODE_GROUND or self.vertical:
+            if self.flight_mode == Globals.FLIGHT_MODE_GROUND:
                 self.roll = self.ground_roll
                 self.roll_confidence = 10.0 - self.roll * 0.5
                 self.timestamp = self.GroundRoll_updated

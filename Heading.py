@@ -21,6 +21,7 @@ class Heading(MicroServerComs):
     def __init__(self, conf_mult=0.1):
         MicroServerComs.__init__(self, "Heading")
         self.heading = None
+        self.float_heading = None
         self.heading_estimate = None
         self.magnetic_variation = None
         self.flight_mode = Globals.FLIGHT_MODE_GROUND
@@ -28,13 +29,19 @@ class Heading(MicroServerComs):
         self.gps_magnetic_variation = None
         # Default 1 degree per minute
         self.confidence_multiplier = conf_mult
+        self.filter_ratio = .9
 
     def updated(self, channel):
         if channel == 'HeadingComputed':
             self.timestamp = self.HeadingComputed_updated
-            self.heading = self.heading_computed
+            self.raw_heading = self.heading_computed
+            if self.float_heading is None:
+                self.float_heading = self.raw_heading
+            else:
+                self.float_heading = self.float_heading * self.filter_ratio + self.raw_heading * (1 - self.filter_ratio)
+            self.heading = int(round(self.float_heading))
             if self.heading_estimate is not None and self.flight_mode != Globals.FLIGHT_MODE_GROUND:
-                variance = abs(self.heading - self.heading_estimate)
+                variance = abs(self.float_heading - self.heading_estimate)
                 self.heading_confidence = 10.0 - variance * self.confidence_multiplier
             else:
                 self.heading_confidence = 9.0
