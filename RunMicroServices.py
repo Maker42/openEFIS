@@ -39,6 +39,7 @@ from Altitude import Altitude
 from ClimbRate import ClimbRate
 from GroundVector import GroundVector
 from ClimbRateEstimate import ClimbRateEstimate
+from PitchRate import PitchRate
 import InternalPublisher
 import MicroServerComs
 from PubSub import CONFIG_FILE
@@ -78,5 +79,6 @@ if __name__ == "__main__":
                 ,ClimbRate()
                 ,GroundVector()
                 ,ClimbRateEstimate()
+                ,PitchRate()
                 ]
     InternalPublisher.TheInternalPublisher.listen()

@@ -31,7 +31,7 @@ TWELVE_HOURS = 60 * 60 * 12
 
 def ParseNMEAStrings(nmea, data_container):
     ret = False
-    if nmea.startswith("$G") and nmea.find('*') > 0:
+    if isinstance(nmea, str) and nmea.startswith("$G") and nmea.find('*') > 0:
         chki = nmea.index('*')
         body = nmea[:chki]
         checkstring = nmea[chki+1:]
@@ -72,8 +72,8 @@ def ParseNMEAStrings(nmea, data_container):
                     alt = float(fields[9])
                     if fields[10] == 'M':
                         alt *= FOOT_METER
-                    data_container.gps_altitude = alt
-                    logger.log(2, "NMEA got GGA: time = %g, pos=%g,%g, alt=%g",
+                    data_container.gps_altitude = int(round(alt))
+                    logger.log(2, "NMEA got GGA: time = %g, pos=%g,%g, alt=%d",
                             data_container.gps_utc,
                             data_container.gps_lat,
                             data_container.gps_lng,
@@ -87,21 +87,24 @@ def ParseNMEAStrings(nmea, data_container):
                     data_container.gps_altitude = None
                     data_container.gps_signal_quality = 0
                     logger.debug("NMEA got GGA with no signal quality")
-            except:
-                logger.debug("Unexpected GGA from GPS: %s", str(fields))
+            except Exception as e:
+                logger.debug("Unexpected GGA from GPS: %s (%s)", str(fields), str(e))
             data_container.GGAUpdate = True
         elif sentence.startswith("GPRMC"):
             fields = sentence.split(',')
             try:
                 if fields[2] == "A":
-                    data_container.gps_ground_speed = float(fields[7])
-                    data_container.gps_ground_track = float(fields[8])
+                    data_container.gps_ground_speed = int(float(fields[7]))
+                    if len(fields[8]) > 0:
+                        data_container.gps_ground_track = int(float(fields[8]))
+                    else:
+                        data_container.gps_ground_track = 0
                     if len(fields) > 10 and len(fields[10]) > 0:
                         data_container.gps_magnetic_variation = float(fields[10])
                     else:
                         # TODO: Fill in magnetic variation with user input or big lookup table
                         data_container.gps_magnetic_variation = 0.0
-                    logger.log(2, "NMEA got RMC: speed=%g, track=%g, var=%g",
+                    logger.log(2, "NMEA got RMC: speed=%d, track=%d, var=%g",
                         data_container.gps_ground_speed,
                         data_container.gps_ground_track,
                         data_container.gps_magnetic_variation)
@@ -112,16 +115,16 @@ def ParseNMEAStrings(nmea, data_container):
                     data_container.gps_ground_track = None
                     data_container.gps_magnetic_variation = None
                     logger.debug("NMEA got void RMC")
-            except:
-                logger.debug("Unexpected RMC from GPS: %s", str(fields))
+            except Exception as e:
+                logger.debug("Unexpected RMC from GPS: %s (%s)", str(fields), str(e))
             data_container.RMCUpdate = True
     return ret
 
 def make_unix_time (utc_hh, utc_mm, utc_ss):
     gmtime = time.gmtime()
-    gmtime.tm_hour = utc_hh
-    gmtime.tm_min = utc_mm
-    gmtime.tm_sec = 0
+    gmtime = (gmtime.tm_year, gmtime.tm_mon, gmtime.tm_mday,
+            gmtime.tm_hour, gmtime.tm_min, 0,
+            gmtime.tm_wday, gmtime.tm_yday, gmtime.tm_isdst)
     ret = timegm (gmtime)
     epoch = time.time()
     if epoch - ret > TWELVE_HOURS:

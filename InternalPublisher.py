@@ -13,7 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-import select
+import select, time
 
 TheInternalPublisher = None
 
@@ -49,11 +49,16 @@ class InternalPublisher:
                         self.config[source_name]['output_values']))
             for v in self.config[source_name]['output_values']:
                 val = getattr (source, v)
+                timestamped = False
+                ts_name = source_name + '_updated'
                 if v == 'timestamp':
-                    target_property = source_name + '_updated'
+                    target_property = ts_name
+                    timestamped = True
                 else:
                     target_property = v
                 setattr (target, target_property, val)
+                if not timestamped:
+                    setattr (target, ts_name, time.time())
             self.pending_channels.append ((target_name,source_name))
         self.propagate()
 

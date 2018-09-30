@@ -47,7 +47,7 @@ arduino_messages = [
 ,"setup_analog_sensor"          # channel, pin, polling period (ms)
 ,"setup_i2c_sensor"             # channel, function, polling period (ms)
 ,"setup_spi_sensor"             # channel, function, polling period (ms)
-,"setup_serial_sensor"          # channel, function, port number, polling period (ms)
+,"setup_serial_sensor"          # channel, function, type, port number
 ,"setup_analog_output"          # pin, initial_value
 ,"setup_digital_output"         # pin, initial_value
 ,"set_analog_output"            # pin, value
@@ -65,9 +65,12 @@ class SenseControlSlave(MicroServerComs):
         self._magnetic = Magnetic()
         self._pressure = Pressure()
         self._temperature = Temperature()
+        self._calibrations = dict()
         self._gps = GPS()
-        for chname,cfg in self._config.items():
-            if cfg[0].startswith ('sensor'):
+        for config_term,cfg in self._config.items():
+            if config_term.startswith ('cal'):
+                self._calibrations.update (cfg)
+            elif cfg[0].startswith ('sensor'):
                 if cfg[0] == 'sensor_digital':
                     _,function,pin,period = cfg
                     self._mainCmd.sendCmd ("setup_digital_sensor", [sensor_chnum, pin, period])
@@ -81,8 +84,9 @@ class SenseControlSlave(MicroServerComs):
                     _,function,period = cfg
                     self._mainCmd.sendCmd ("setup_spi_sensor", [sensor_chnum, function, period])
                 elif cfg[0] == 'sensor_serial':
-                    _,function,port,period = cfg
-                    self._mainCmd.sendCmd ("setup_serial_sensor", [sensor_chnum, function, port, period])
+                    _,function,port,stype = cfg
+                    self._mainCmd.sendCmd ("setup_serial_sensor", [sensor_chnum, function,
+                                    port, stype])
                 else:
                     raise RuntimeError ("Unsupported sensor type: %s"%cfg[0])
                 self._sensors[sensor_chnum] = function
@@ -131,25 +135,40 @@ class SenseControlSlave(MicroServerComs):
         g: gps. output format NMEA string
         """
         if function == 'a':
-            self._accelerometers.send (args)
+            self._accelerometers.send (args,
+                    self._calibrations['accelerometers']
+                    if 'accelerometers' in self._calibrations
+                    else None)
         elif function == 'r':
-            self._rotation.send (args)
+            self._rotation.send (args,
+                    self._calibrations['rotation']
+                    if 'rotation' in self._calibrations
+                    else None)
         elif function == 'm':
-            self._magnetic.send (args)
+            self._magnetic.send (args,
+                    self._calibrations['magnetic']
+                    if 'magnetic' in self._calibrations
+                    else None)
         elif function == 'p':
-            self._pressure.send (args)
+            self._pressure.send (args,
+                    self._calibrations['pressure']
+                    if 'pressure' in self._calibrations
+                    else None)
         elif function == 't':
-            self._temperature.send (args)
+            self._temperature.send (args,
+                    self._calibrations['temperature']
+                    if 'temperature' in self._calibrations
+                    else None)
         elif function == 'g':
             self._gps.send (args)
         elif function == 'd':
             # generic digital input, configured elsewhere
             # Not implemented
-            pass
+            raise RuntimeError ("digital input not implemented")
         elif function == 'n':
             # generic analog input, configured elsewhere
             # Not implemented
-            pass
+            raise RuntimeError ("analog input not implemented")
 
 
 class Accelerometers(MicroServerComs):
@@ -158,12 +177,12 @@ class Accelerometers(MicroServerComs):
         self.a_y = None
         self.a_z = None
         self.timestamp = None
-        MicroServerComs.__init__(self, "RawAccelerometers")
+        MicroServerComs.__init__(self, "RawAccelerometers", channel='accelerometers')
 
-    def send(self, args):
+    def send(self, args, calibration):
         self.a_x, self.a_y, self.a_z, ts = args
         self.timestamp = make_timestamp (ts)
-        print ("accel %g,%g,%g"%(self.a_x, self.a_y, self.a_z))
+        #print ("accel %g,%g,%g"%(self.a_x, self.a_y, self.a_z))
         self.publish()
 
 class Rotation(MicroServerComs):
@@ -171,13 +190,39 @@ class Rotation(MicroServerComs):
         self.r_x = None
         self.r_y = None
         self.r_z = None
+        self.cal_collection_count = 0
+        self.local_calibration = [0.0, 0.0, 0.0]
         self.timestamp = None
-        MicroServerComs.__init__(self, "RawRotationSensors")
+        self.print_count = 0
+        MicroServerComs.__init__(self, "RawRotationSensors", channel='rotationsensors')
 
-    def send(self, args):
+    def send(self, args, calibration):
         self.r_x, self.r_y, self.r_z, ts = args
+        if calibration:
+            if isinstance (calibration[0],str) and calibration[0] == 'collect':
+                if self.cal_collection_count < calibration [1]:
+                    self.local_calibration [0] += self.r_x
+                    self.local_calibration [1] += self.r_y
+                    self.local_calibration [2] += self.r_z
+                    self.cal_collection_count += 1
+                    if self.cal_collection_count == calibration [1]:
+                        self.local_calibration [0] /= self.cal_collection_count
+                        self.local_calibration [1] /= self.cal_collection_count
+                        self.local_calibration [2] /= self.cal_collection_count
+                    c_x = self.local_calibration [0] / self.cal_collection_count
+                    c_y = self.local_calibration [1] / self.cal_collection_count
+                    c_z = self.local_calibration [2] / self.cal_collection_count
+                else:
+                    c_x, c_y, c_z = self.local_calibration
+            else:
+                c_x, c_y, c_z = calibration
+            self.r_x -= c_x
+            self.r_y -= c_y
+            self.r_z -= c_z
         self.timestamp = make_timestamp (ts)
-        print ("rotation %g,%g,%g"%(self.r_x, self.r_y, self.r_z))
+        self.print_count += 1
+        if self.print_count % 10 == 0:
+            print ("rotation %g,%g,%g"%(self.r_x, self.r_y, self.r_z))
         self.publish()
 
 class Magnetic(MicroServerComs):
@@ -186,12 +231,12 @@ class Magnetic(MicroServerComs):
         self.m_y = None
         self.m_z = None
         self.timestamp = None
-        MicroServerComs.__init__(self, "RawMagneticSensors")
+        MicroServerComs.__init__(self, "RawMagneticSensors", channel='magneticsensors')
 
-    def send(self, args):
+    def send(self, args, calibration):
         self.m_x, self.m_y, self.m_z, ts = args
         self.timestamp = make_timestamp (ts)
-        print ("magnetic %g,%g,%g"%(self.m_x, self.m_y, self.m_z))
+        #print ("magnetic %g,%g,%g"%(self.m_x, self.m_y, self.m_z))
         self.publish()
 
 class Pressure(MicroServerComs):
@@ -199,24 +244,24 @@ class Pressure(MicroServerComs):
         self.static_pressure = None
         self.pitot_pressure = None
         self.timestamp = None
-        MicroServerComs.__init__(self, "RawPressureSensors")
+        MicroServerComs.__init__(self, "RawPressureSensors", channel='pressuresensors')
 
-    def send(self, args):
+    def send(self, args, calibration):
         self.static_pressure, self.pitot_pressure, ts = args
         self.static_pressure /= 1000.0
         self.pitot_pressure /= 1000.0
         self.timestamp = make_timestamp (ts)
-        print ("pressure %g,%g"%(self.static_pressure, self.pitot_pressure))
+        #print ("pressure %g,%g"%(self.static_pressure, self.pitot_pressure))
         self.publish()
 
 class Temperature(MicroServerComs):
     def __init__(self):
         self.temperature = None
-        MicroServerComs.__init__(self, "RawTemperatureSensors")
+        MicroServerComs.__init__(self, "RawTemperatureSensors", channel='temperaturesensors')
 
-    def send(self, args):
+    def send(self, args, calibration):
         self.temperature = args[0]
-        print ("temp %g"%(self.temperature))
+        #print ("temp %g"%(self.temperature))
         self.publish()
 
 class GPS(MicroServerComs):
@@ -229,7 +274,8 @@ class GPS(MicroServerComs):
         self.gps_ground_track = None
         self.gps_signal_quality = None
         self.gps_magnetic_variation = None
-        MicroServerComs.__init__(self, "RawTemperatureSensors")
+        self.HaveNewPosition = False
+        MicroServerComs.__init__(self, "GPSFeed", channel='gpsfeed')
 
     def send(self, args):
         nmea_string,ts = args
@@ -319,4 +365,4 @@ if '__main__' == __name__:
     while True:
         slave.ReadSensors()
         slave.listen (timeout=0, loop=False)
-        time.sleep(.01)
+        #time.sleep(.01)    On windows, the sleep is like minimum 300ms -- too long

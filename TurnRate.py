@@ -19,6 +19,7 @@ class TurnRate(MicroServerComs):
                 self.turn_rate_confidence = 10.0 - variance * self.confidence_multiplier
             else:
                 self.turn_rate_confidence = 9.0
+            self.publish()
             print ("TurnRate: %g(%g)"%(self.turn_rate, self.turn_rate_confidence))
 
 

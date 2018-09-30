@@ -18,12 +18,12 @@ bool gyroSensorEnabled = false;
 bool accSensorEnabled = false;
 bool magSensorEnabled = false;
 
-char    gps_line[2][80];
+char    gps_line[2][120];
 int     current_gps_line = 0, last_gps_line = 1, gps_index = 0;
 
 uint8_t function2chan[num_functions];
 
-char    output_line[80];
+char    output_line[120];
 
 sChannel    channels[MAX_CHANNELS];
 
@@ -125,7 +125,7 @@ void Onsetup_serial_sensor()
   int16_t   chan;
   char      function;
   int16_t   port_number;
-  int32_t   period;
+  char      *stype;
 
   chan = cmdMessenger.readInt16Arg();
   if ((chan >= NELEMENTS(channels)) || (chan < 0))
@@ -136,11 +136,9 @@ void Onsetup_serial_sensor()
       bool good = true;
       function = cmdMessenger.readCharArg();
       port_number = cmdMessenger.readInt16Arg();
-      period = cmdMessenger.readInt32Arg();
+      stype = cmdMessenger.readStringArg();
       channels[chan].function = function;
       channels[chan].pin = port_number;
-      channels[chan].period = period;
-      channels[chan].next_time = millis() + period;
       switch (function)
       {
         case 'g':
@@ -158,23 +156,52 @@ void Onsetup_serial_sensor()
           case 1:
             gps = &Serial1;
             Serial1.begin(9600);
+            if (!strncmp (stype, "ubx", 3))
+            {
+                gps->println("$PUBX,41,1,0003,0003,57600,0*2F");
+                Serial1.end();
+                Serial1.begin(57600);
+            }
             break;
           case 2:
             gps = &Serial2;
             Serial2.begin(9600);
+            if (!strncmp (stype, "ubx", 3))
+            {
+                gps->println("$PUBX,41,1,0003,0003,57600,0*2F");
+                Serial2.end();
+                Serial2.begin(57600);
+            }
             break;
           case 3:
             gps = &Serial3;
             Serial3.begin(9600);
+            if (!strncmp (stype, "ubx", 3))
+            {
+                gps->println("$PUBX,41,1,0003,0003,57600,0*2F");
+                Serial3.end();
+                Serial3.begin(57600);
+            }
             break;
           default:
             good = false;
             cmdMessenger.sendCmd(nack, "Invalid Serial Port Number");
         }
-        gps->write (PMTK_SET_BAUD_9600);
-        gps->write (PMTK_SET_NMEA_OUTPUT_RMCGGA);
-        gps->write (PMTK_SET_NMEA_UPDATE_1HZ);
-        gps->write (PMTK_API_SET_FIX_CTL_1HZ);
+        //gps->write (PMTK_SET_BAUD_9600);
+        delay(100);
+        if (!strncmp (stype, "ubx", 3))
+        {
+            gps->println ("$PUBX,40,GLL,0,0,0,0,0,0*5C");
+            gps->println ("$PUBX,40,GSA,0,0,0,0,0,0*4E");
+            gps->println ("$PUBX,40,GSV,0,0,0,0,0,0*59");
+            gps->println ("$PUBX,40,VTG,0,0,0,0,0,0*5E");
+            gps->println ("$PUBX,40,RMC,0,1,0,0,0,0*46");
+        } else if (!strncmp (stype, "mtk", 3))
+        {
+            gps->write (PMTK_SET_NMEA_OUTPUT_RMCGGA);
+            gps->write (PMTK_SET_NMEA_UPDATE_1HZ);
+            gps->write (PMTK_API_SET_FIX_CTL_1HZ);
+        }
       }
       if (good) cmdMessenger.sendCmd(ack);
   }
@@ -247,6 +274,41 @@ void cmdLog(unsigned level, const char *s)
   cmdMessenger.sendCmdEnd();
 }
 
+void pollGps()
+{
+  static int     max_gps_available = 0;     // Collect buffer fill statistics in case it's needed
+
+  while (gps && (gps->available()))
+  {
+    if (gps->available() > max_gps_available) max_gps_available = gps->available();
+    char c = gps->read();
+    if (c == '\r') continue;
+    gps_line[current_gps_line][gps_index++] = c;
+    
+    if ((c == '\n') || (gps_index >= sizeof(gps_line[0])-1) || ((c == '$') && (gps_index > 1)))
+    {
+      int   temp = last_gps_line;
+      if (c == '$')
+      {
+        gps_line[current_gps_line][gps_index-1] = 0;
+        gps_line[last_gps_line][0] = '$';
+        gps_index = 1;
+      } else
+      {
+        gps_line[current_gps_line][gps_index] = 0;
+        gps_index = 0;
+      }
+      last_gps_line = current_gps_line;
+      current_gps_line = temp;
+      cmdMessenger.sendCmdStart (sensor_reading);
+      cmdMessenger.sendCmdArg (function2chan [gps_function]);
+      cmdMessenger.sendCmdArg (gps_line[last_gps_line]);
+      cmdMessenger.sendCmdArg (millis());
+      cmdMessenger.sendCmdEnd ();
+      max_gps_available = 0;
+    }
+  }
+}
 
 void setup()
 {
@@ -273,33 +335,10 @@ void loop()
   long  sleeptime = 0x7ffffff;
   pChannel          pch;
   
+  pollGps();
   // put your main code here, to run repeatedly:
-  while (gps && gps->available())
-  {
-    char c = gps->read();
-    gps_line[current_gps_line][gps_index++] = c;
-    //Serial.print ("gps_line[");
-    //Serial.print (current_gps_line);
-    //Serial.print ("][");
-    //Serial.print (gps_index-1);
-    //Serial.print ("] = ");
-    //Serial.println ((int)c);
-    if ((c == '\n') || (gps_index >= sizeof(gps_line[0])-1))
-    {
-      gps_line[current_gps_line][gps_index++] = 0;
-      int   temp = last_gps_line;
-      last_gps_line = current_gps_line;
-      current_gps_line = temp;
-      gps_index = 0;
-      cmdMessenger.sendCmdStart (sensor_reading);
-      cmdMessenger.sendCmdArg (function2chan [gps_function]);
-      cmdMessenger.sendCmdArg (gps_line[last_gps_line]);
-      cmdMessenger.sendCmdArg (millis());
-      cmdMessenger.sendCmdEnd ();
-    }
-  }
-
   cmdMessenger.feedinSerialData();
+  pollGps();
 
   unsigned long ms = millis();
   long          timediff;
@@ -327,6 +366,10 @@ void loop()
         }
     }
   }
+
+  pollGps();
+  ms = millis();
+
   if ((bmpSensorEnabled) && (function2chan[temp_function] != 0xff))
   {
     channel = function2chan[temp_function];
@@ -347,6 +390,10 @@ void loop()
         }
     }
   }
+
+  pollGps();
+  ms = millis();
+
   if ((gyroSensorEnabled) && (function2chan[rotation_function] != 0xff))
   {
     channel = function2chan[rotation_function];
@@ -370,6 +417,10 @@ void loop()
         }
     }
   }
+
+  pollGps();
+  ms = millis();
+
   if ((accSensorEnabled) && (function2chan[accel_function] != 0xff))
   {
     channel = function2chan[accel_function];
@@ -393,6 +444,10 @@ void loop()
         }
     }
   }
+
+  pollGps();
+  ms = millis();
+
   if ((magSensorEnabled) && (function2chan[magnetic_function] != 0xff))
   {
     channel = function2chan[magnetic_function];
@@ -416,7 +471,10 @@ void loop()
         }
     }
   }
+
+  pollGps();
   ms = millis();
+
   for (channel = 0; channel < NELEMENTS(channels); channel++)
   {
     pch = &(channels[channel]);
@@ -446,6 +504,6 @@ void loop()
         }
     }
   }
-  if (sleeptime > 100) sleeptime = 100;
+  if (sleeptime > 1) sleeptime = 1;
   if (sleeptime > 0) delay (sleeptime);
 }

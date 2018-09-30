@@ -115,7 +115,13 @@ class Airplane(FileConfig.FileConfig):
 
         FileConfig.FileConfig.__init__(self, single_arg_actions, double_arg_actions)
 
-    def initialize(self, filelines):
+    def initialize(self, filelines, known_altitude=None,
+            given_barometer=None, winds=None):
+
+        self.known_altitude = known_altitude
+        self.given_barometer = given_barometer
+        self.winds = winds
+
         self.InitializeFromFileLines (filelines)
 
         self._aileron_control.SetServoController(self._servo_controller)
@@ -245,7 +251,11 @@ class Airplane(FileConfig.FileConfig):
 
     def init_sensors(self, args, filelines):
         self._sensors = eval(' '.join(args[1:]))
-        self._sensors.initialize(filelines)
+        self._sensors.initialize(filelines,
+                                self.known_altitude,
+                                self.given_barometer,
+                                self.winds)
+        self._sensors.WaitSensorsGreen()
 
     def init_servo_control(self, args, filelines):
         self._servo_controller = eval(' '.join(args[1:]))
@@ -285,7 +295,10 @@ class Airplane(FileConfig.FileConfig):
         self.ComputeRunwayEndpoints()
         self.ChangeMode(Globals.FLIGHT_MODE_TAKEOFF)
         self.DesiredCourse = self.ApproachEndpoints
-        self._takeoff_control.Takeoff (self.ApproachEndpoints, soft_field)
+        if isinstance(self._takeoff_control,TakeoffControlVTOL.TakeoffControlVTOL):
+            self._takeoff_control.Takeoff (self.DesiredCourse)
+        else:
+            self._takeoff_control.Takeoff (self.ApproachEndpoints, soft_field)
         if soft_field:
             self._elevator_control.Set(.7)
         else:

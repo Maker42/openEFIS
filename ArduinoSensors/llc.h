@@ -83,6 +83,6 @@ enum
 };
 
 #define NELEMENTS(x)        (sizeof(x) / sizeof(x[0]))
+#define MIN(x,y)            ((x) < (y) ? (x) : (y))
 
 void cmdLog(unsigned level, const char *s);
-

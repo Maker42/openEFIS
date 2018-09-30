@@ -108,7 +108,12 @@ class ArduinoCmdMessenger:
     def read_command(self, timeout=1.0):
         starttime = time.time()
         while True:
-            recv = self.device.read().decode('ascii')
+            recv = self.device.read()
+            try:
+                recv = recv.decode('utf-8')
+            except:
+                logger.debug ("cannot decode bytes: %s"%recv)
+                recv = None
             if recv is not None:
                 if len(recv) > 0:
                     self.receive_buffer += recv

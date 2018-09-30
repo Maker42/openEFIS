@@ -85,12 +85,33 @@ class Sensors(MicroServerComs):
         self._known_altitude = KnownAltitude()
         self._flight_mode = FlightModeSource()
         self._wind_report = WindsAloftReport()
+        self.altitude = None
+        self.airspeed = None
+        self.heading = None
+        self.roll = None
+        self.roll_rate = None
+        self.pitch = None
+        self.pitch_rate = None
+        self.yaw = None
+        self.climb_rate = None
+        self.turn_rate = None
+        self.gps_utc = None
+        self.gps_lat = None
+        self.gps_lng = None
+        self.gps_ground_speed = None
+        self.gps_ground_track = None
+        self.gps_signal_quality = None
+        self.gps_magnetic_variation = None
 
-    def initialize(self, filelines):
-        pass
+    def initialize(self, filelines, alt, barometer, wind):
+        if alt is not None:
+            self.KnownAltitude (alt)
+        if barometer is not None:
+            pass    # Not implemented yet
+        self.wind_report = wind
 
-    def FlightMode(self, mode, vertical = True):
-        self._flight_mode.send (mode, vertial)
+    def FlightMode(self, mode, vertical = 1):
+        self._flight_mode.send (mode, vertical)
 
     def KnownAltitude(self, alt):
         self._known_altitude.send(alt)
@@ -139,7 +160,7 @@ class Sensors(MicroServerComs):
 
     def Position(self):
         self.listen (timeout=0, loop=False)
-        return self.position
+        return (self.gps_lat, self.gps_lng)
 
     def HeadingRateChange(self):
         self.listen (timeout=0, loop=False)
@@ -168,11 +189,21 @@ class Sensors(MicroServerComs):
     # Actual flight path in true coordinates
     def GroundTrack(self):
         self.listen (timeout=0, loop=False)
-        return self.groundTrack
+        return self.gps_ground_track
 
     def GroundSpeed(self):
         self.listen (timeout=0, loop=False)
-        return self.groundSpeed
+        if self.gps_ground_speed is not None and \
+                self.altitude is not None and \
+                self.wind_report is not None:
+            direction,speed = self.wind_report
+            print ("Making wind report %s"%( str ((
+                    self.gps_lat, self.gps_lng, self.altitude,
+                    self.gps_utc, direction, speed)), ))
+            self.WindsAloftReport(self.gps_lat, self.gps_lng, self.altitude,
+                    self.gps_utc, direction, speed)
+            self.wind_report = None
+        return self.gps_ground_speed
 
     def AGL(self):
         self.listen (timeout=0, loop=False)
@@ -186,11 +217,29 @@ class Sensors(MicroServerComs):
 
     def Snapshot(self):
         return str(dir(self))
+    
+    def updated(self, channel):
+        return
+
+    def WaitSensorsGreen(self):
+        while self.gps_ground_speed is None or \
+                self.altitude is None or \
+                self.airspeed is None or \
+                self.heading is None or \
+                self.roll is None or \
+                self.pitch is None or \
+                self.yaw is None or \
+                self.turn_rate is None or \
+                self.pitch_rate is None or \
+                self.roll_rate is None or \
+                self.climb_rate is None:
+            self.listen (timeout=0, loop=False)
+            time.sleep (.1)
 
 class KnownAltitude(MicroServerComs):
     def __init__(self):
         self.known_altitude = None
-        MicroServerComs.__init__("KnownAltitude")
+        MicroServerComs.__init__(self, "KnownAltitude", channel='knownaltitude')
 
     def send(self, alt):
         self.known_altitude = alt
@@ -199,7 +248,7 @@ class KnownAltitude(MicroServerComs):
 class GivenBarometer(MicroServerComs):
     def __init__(self):
         self.given_barometer = None
-        MicroServerComs.__init__("GivenBarometer")
+        MicroServerComs.__init__(self, "GivenBarometer", channel='givenbarometer')
 
     def send(self, b):
         self.given_barometer = b
@@ -209,16 +258,16 @@ class FlightModeSource(MicroServerComs):
     def __init__(self):
         self.flight_mode = None
         self.vertical = None
-        MicroServerComs.__init__("FlightModeSource")
+        MicroServerComs.__init__(self, "FlightModeSource", channel='flightmode')
 
     def send(self, m, vertical):
-        self.flight_mode = m
-        self.vertical = vertical
+        self.flight_mode = bytes(m, 'ascii')
+        self.vertical = int(vertical)
         self.publish()
 
 class WindsAloftReport(MicroServerComs):
     def __init__(self):
-        MicroServerComs.__init__("WindsAloftReport")
+        MicroServerComs.__init__(self, "WindsAloftReport", channel='windsaloftreport')
 
     def send (self, lat, lng, altitude, timestamp, direction, speed):
         self.wa_lat = lat

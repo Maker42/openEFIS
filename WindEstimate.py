@@ -22,7 +22,7 @@ class WindEstimate(MicroServerComs):
     def updated(self, channel):
         update = False
         if channel == 'windsaloftreport':
-            position=(self.wa_lat,self.wa_lng)
+            position=(round(self.wa_lat,2),round(self.wa_lng,2))
             if position in self.winds_aloft_reports:
                 if self.wa_altitude in self.winds_aloft_reports[position]:
                     self.winds_aloft_reports[position][self.wa_altitude][self.wa_time] = ( \
@@ -30,13 +30,15 @@ class WindEstimate(MicroServerComs):
                     # TODO: trim out old reports
                 else:
                     self.winds_aloft_reports[position][self.wa_altitude] = {
-                            self.wa_time, (self.wa_heading,self.wa_speed)}
+                            self.wa_time: (self.wa_heading,self.wa_speed)}
             else:
                 self.winds_aloft_reports[position] = {
-                        self.wa_altitude: {self.wa_time, (self.wa_heading,self.wa_speed)}}
+                        self.wa_altitude: {self.wa_time: (self.wa_heading,self.wa_speed)}}
             if self.airspeed_is_estimated:
                 # TODO: Create wind estimate from reports
-                pass
+                self.wind_heading = self.wa_heading
+                self.wind_speed = self.wa_speed
+                self.publish()  # Publish the last reported for now
         elif channel == 'Airspeed':
             if self.cas2tas is not None:
                 self.true_airspeed = self.airspeed * self.cas2tas

@@ -20,8 +20,6 @@ class PitchRate(MicroServerComs):
     def __init__(self, cor_rate=1.0, conf_mult=1.0):
         MicroServerComs.__init__(self, "PitchRate")
         self.pitch_rate = None
-        self.pitch_rate_estimate = None
-        self.flight_mode = Globals.FLIGHT_MODE_GROUND
         self.pitch_rate_confidence = 0.0
         # Default 1 degree per minute
         self.confidence_multiplier = conf_mult
@@ -29,13 +27,7 @@ class PitchRate(MicroServerComs):
     def updated(self, channel):
         if channel == 'rotationsensors':
             self.pitch_rate = self.r_x
-            if self.pitch_rate_estimate is not None and \
-                            self.flight_mode != Globals.FLIGHT_MODE_GROUND:
-                variance = abs(self.pitch_rate - self.pitch_rate_estimate)
-                self.pitch_rate_confidence = 10.0 - variance * self.confidence_multiplier
-            else:
-                self.pitch_rate = self.r_x
-                self.pitch_rate_confidence = 10.0
+            self.pitch_rate_confidence = 10.0
             self.timestamp = self.rotationsensors_updated
             self.publish ()
             print ("pitch_rate: %g => %g(%g)"%(self.r_x, self.pitch_rate, self.pitch_rate_confidence))

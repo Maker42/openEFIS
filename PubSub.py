@@ -32,49 +32,53 @@ def run_channel (*args, **kwargs):
     select_list = list()
     exception_list = list()
     subs = dict()
-    for pipe in pubs_cfg:
-        protocol = pipe['protocol']
-        port = pipe['port']
-        if protocol == 'udp':
-            usock = socket.socket (type=socket.SOCK_DGRAM)
-            usock.bind(('',port))
-            listeners[usock.fileno()] = (usock, protocol, 'p')
-            select_list.append (usock.fileno())
-            exception_list.append (usock.fileno())
-            print ("Created udp pub socket for %s"%pipe['function'])
-        elif protocol == 'tcp':
-            tsock = socket.socket (type=socket.SOCK_STREAM)
-            tsock.bind(('',port))
-            tsock.listen(10)
-            listeners[tsock.fileno()] = (tsock, 'tcplisten', 'p')
-            select_list.append (tsock.fileno())
-            exception_list.append (tsock.fileno())
-            print ("Created TCP pub listener socket for %s"%pipe['function'])
+    if pubs_cfg is not None:
+        for pipe in pubs_cfg:
+            protocol = pipe['protocol']
+            if protocol == 'udp':
+                port = pipe['port']
+                usock = socket.socket (type=socket.SOCK_DGRAM)
+                usock.bind(('',port))
+                listeners[usock.fileno()] = (usock, protocol, 'p')
+                select_list.append (usock.fileno())
+                exception_list.append (usock.fileno())
+                print ("Created udp pub socket for %s"%pipe['function'])
+            elif protocol == 'tcp':
+                port = pipe['port']
+                tsock = socket.socket (type=socket.SOCK_STREAM)
+                tsock.bind(('',port))
+                tsock.listen(10)
+                listeners[tsock.fileno()] = (tsock, 'tcplisten', 'p')
+                select_list.append (tsock.fileno())
+                exception_list.append (tsock.fileno())
+                print ("Created TCP pub listener socket for %s"%pipe['function'])
 
-    for pipe in subs_cfg:
-        protocol = pipe['protocol']
-        port = pipe['port']
-        if protocol == 'udp':
-            usock = socket.socket (type=socket.SOCK_DGRAM)
-            addr = pipe['addr']
-            #usock.bind(('',port-1000))
-            try:
-                usock.connect((addr,port))
-            except Exception as e:
-                print ("Could not connect to %s:%d for channel %s, function %s"%(
-                    addr, port, chname, pipe['function']))
-                continue
-            subs[usock.fileno()] = (usock, chname, pipe['function'])
-            exception_list.append (usock.fileno())
-            print ("Created UDP sub socket for %s"%pipe['function'])
-        elif protocol == 'tcp':
-            tsock = socket.socket (type=socket.SOCK_STREAM)
-            tsock.bind(('',port))
-            tsock.listen(10)
-            listeners[tsock.fileno()] = (tsock, 'tcplisten', 's')
-            select_list.append (tsock.fileno())
-            exception_list.append (tsock.fileno())
-            print ("Created TCP sub listener socket for %s"%pipe['function'])
+    if subs_cfg is not None:
+        for pipe in subs_cfg:
+            protocol = pipe['protocol']
+            if protocol == 'udp':
+                port = pipe['port']
+                usock = socket.socket (type=socket.SOCK_DGRAM)
+                addr = pipe['addr']
+                #usock.bind(('',port-1000))
+                try:
+                    usock.connect((addr,port))
+                except Exception as e:
+                    print ("Could not connect to %s:%d for channel %s, function %s"%(
+                        addr, port, chname, pipe['function']))
+                    continue
+                subs[usock.fileno()] = (usock, chname, pipe['function'])
+                exception_list.append (usock.fileno())
+                print ("Created UDP sub socket for %s"%pipe['function'])
+            elif protocol == 'tcp':
+                port = pipe['port']
+                tsock = socket.socket (type=socket.SOCK_STREAM)
+                tsock.bind(('',port))
+                tsock.listen(10)
+                listeners[tsock.fileno()] = (tsock, 'tcplisten', 's')
+                select_list.append (tsock.fileno())
+                exception_list.append (tsock.fileno())
+                print ("Created TCP sub listener socket for %s"%pipe['function'])
 
     if len(select_list) == 0:
         print ("No external connections for channel %s. This thread quiting"%chname)
@@ -107,7 +111,6 @@ def run_channel (*args, **kwargs):
             else:
                 message = s.recv(MAX_DATA_SIZE)
                 todelete = list()
-                #print ("PubSub received from %s"%role)
                 for fileno,(sock,chname,function) in subs.items():
                     try:
                         #print ("PubSub sending to %s"%chname)

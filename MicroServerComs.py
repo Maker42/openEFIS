@@ -93,7 +93,7 @@ class MicroServerComs:
             InternalPublisher.TheInternalPublisher.register_channel (self.channel, self, self.subchannels)
 
     def __str__(self):
-        return "pub=%s, subs=%s"%(str(self.pubchannel), str(self.subchannels))
+        return "%s: pub=%s, subs=%s"%(self.function, str(self.pubchannel), str(self.subchannels))
 
     def listen(self, timeout=None, loop=True):
         rsocks = list(self.subchannels.keys())
@@ -149,7 +149,12 @@ class MicroServerComs:
             pack_args = (self.output_format, )
             for vname in self.output_values:
                 pack_args = pack_args + (getattr (self, vname),)
-            message = struct.pack (*pack_args)
+            try:
+                message = struct.pack (*pack_args)
+            except Exception as e:
+                print ("Struct packing error %s: args %s"%(str(e), str(pack_args)))
+                raise
+            #print ("%s connected sends %s"%(self.function, str(message)))
             self.pubchannel.sendall (message)
             #print ("External publish %s to function %s, file %d"%(self.output_values, self.function,
             #    self.pubchannel.fileno()))

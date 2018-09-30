@@ -9,7 +9,7 @@ accelerometers:
       - a_z
   format: dfff
   pubs:
-  - {addr: localhost, port: 49020, protocol: udp, function: RawAccelerometers}
+  - {addr: 192.168.0.2, port: 49020, protocol: udp, function: RawAccelerometers}
   subs:
   - {addr: localhost, port: 49021, protocol: udp, function: Yaw}
   - {addr: localhost, port: 49022, protocol: udp, function: PitchEstimate}
@@ -24,7 +24,7 @@ rotationsensors:
       - r_z
   format: dfff
   pubs:
-  - {addr: localhost, port: 49030, protocol: udp, function: RawRotationSensors}
+  - {addr: 192.168.0.2, port: 49030, protocol: udp, function: RawRotationSensors}
   subs:
   - {addr: localhost, port: 49031, protocol: udp, function: Pitch}
   - {addr: localhost, port: 49032, protocol: udp, function: Roll}
@@ -39,7 +39,7 @@ magneticsensors:
       - m_z
   format: dfff
   pubs:
-  - {addr: localhost, port: 49040, protocol: udp, function: RawMagneticSensors}
+  - {addr: 192.168.0.2, port: 49040, protocol: udp, function: RawMagneticSensors}
   subs:
   - {addr: localhost, port: 49041, protocol: udp, function: HeadingComputed}
 
@@ -50,7 +50,7 @@ pressuresensors:
       - pitot_pressure
   format: dff
   pubs:
-  - {addr: localhost, port: 49050, protocol: udp, function: RawPressureSensors}
+  - {addr: 192.168.0.2, port: 49050, protocol: udp, function: RawPressureSensors}
   subs:
   - {addr: localhost, port: 49051, protocol: udp, function: PressureFactors}
   - {addr: localhost, port: 49052, protocol: udp, function: AltitudeComputed}
@@ -61,7 +61,7 @@ temperaturesensors:
       - temperature     # In Celcius
   format: f
   pubs:
-  - {addr: localhost, port: 49060, protocol: udp, function: RawTemperatureSensors}
+  - {addr: 192.168.0.2, port: 49060, protocol: udp, function: RawTemperatureSensors}
   subs:
   - {addr: localhost, port: 49061, protocol: udp, function: PressureFactors}
   - {addr: localhost, port: 49062, protocol: udp, function: AltitudeComputed}
@@ -78,7 +78,7 @@ gpsfeed:
       - gps_magnetic_variation
   format: dddiiiif
   pubs:
-  - {addr: localhost, port: 49070, protocol: udp, function: GPSFeed}
+  - {addr: 192.168.0.2, port: 49070, protocol: udp, function: GPSFeed}
   subs:
   - {addr: localhost, port: 49071, protocol: udp, function: TrackRate}
   - {addr: localhost, port: 49072, protocol: udp, function: ClimbRateEstimate}
@@ -121,16 +121,16 @@ givenbarometer:
 flightmode:
   output_values:
       - flight_mode
-        - vertical
-  format: i
+      - vertical
+  format: 10si
   pubs:
-  - {addr: pubsub, port: 49110, protocol: udp, function: FlightModeSource}
+  - {addr: localhost, port: 49110, protocol: udp, function: FlightModeSource}
   subs:
-  - {addr: sensor_processing, port: 49111, protocol: udp, function: Heading}
-  - {addr: sensor_processing, port: 49112, protocol: udp, function: Pitch}
-  - {addr: sensor_processing, port: 49113, protocol: udp, function: Roll}
-  - {addr: sensor_processing, port: 49114, protocol: udp, function: RollRate}
-  - {addr: sensor_processing, port: 49115, protocol: udp, function: PitchRate}
+  - {addr: localhost, port: 49111, protocol: udp, function: Heading}
+  - {addr: localhost, port: 49112, protocol: udp, function: Pitch}
+  - {addr: localhost, port: 49113, protocol: udp, function: Roll}
+  - {addr: localhost, port: 49114, protocol: udp, function: RollRate}
+  - {addr: localhost, port: 49115, protocol: udp, function: PitchRate}
 
 
 #
@@ -452,5 +452,5 @@ Control:
     pubs:
       - {addr: localhost, port: 48120, protocol: udp, function: Control}
     subs:
-      - {addr: localhost, port: 48121, protocol: udp, function: ControlSlave}
+      - {addr: 192.168.0.7, port: 48121, protocol: udp, function: ControlSlave}
 

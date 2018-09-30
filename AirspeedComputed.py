@@ -42,7 +42,7 @@ class AirspeedComputed(MicroServerComs):
                 self.publish ()
                 print ("AirspeedComputed: %d"%self.airspeed_computed)
             else:
-                print ("AirspeedComputed: don't pitot")
+                print ("AirspeedComputed: no pitot")
         else:
             print ("AirspeedComputed: don't have curve")
 

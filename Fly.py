@@ -41,7 +41,10 @@ if '__main__' == __name__:
     opt.add_argument('-i', '--pickup', type=int, default=0, help = 'Pick up the flight plan from sequence number')
     opt.add_argument('--log-level', type=int, default=logging.INFO, help = '1 = Maximum Logging. 100 = Absolute Silence. 40 = Errors only. 10 = Basic Debug')
     opt.add_argument('-v', '--magnetic-variation', default=None, help='The magnetic variation(declination) of the current position')
-    opt.add_argument('-a', '--altitude', default=None, help='The currently known altitude')
+    opt.add_argument('-a', '--altitude', default=None, type=int, help='The currently known altitude')
+    opt.add_argument('-b', '--barometer', default=None, type=float, help='The given barometric pressure in inches of mercury')
+    opt.add_argument('-s', '--wind-speed', default=None, type=int, help='The current wind speed in knots')
+    opt.add_argument('--wind-heading', default=None, type=int, help='The current wind heading in degrees')
     args = opt.parse_args()
 
     if args.home:
@@ -86,7 +89,7 @@ if '__main__' == __name__:
         raise RuntimeError ('Empty config file: %s'%sys.argv[1])
 
     craft = Airplane.Airplane()
-    craft.initialize(rlines)
+    craft.initialize(rlines, args.altitude, args.barometer, (args.wind_heading, args.wind_speed))
     if args.magnetic_variation != None:
         craft.KnownMagneticVariation(args.magnetic_variation)
     if args.altitude != None:
@@ -122,7 +125,7 @@ if '__main__' == __name__:
         UnitTestFixture.ReadResponses(args.unit_test)
         UnitTestFixture.Update()
 
-    if craft._sensors.AGL() > 20 and craft._sensors.AirSpeed() > 20:
+    if craft._sensors.AirSpeed() > 20:
         craft._flight_control._throttle_control.Set(.5)
         craft.ChangeMode (Globals.FLIGHT_MODE_AIRBORN)
     dispatch_command_number = 0
