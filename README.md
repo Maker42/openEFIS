@@ -7,13 +7,13 @@ To understand the code structure, see Readme.odg
 
 # OpenEFIS Flight Information Display, Sensor Processing and Autopilot
 
-![Sample](./SampleImage.jpg)
+
+![Sample](https://raw.githubusercontent.com/Maker42/openEFIS/gh-pages/SampleImage.jpg)
 
 This is an X-Plane screen shot taken of the autopilot landing a 747:
 
-![Boeing747](./747ShortFinal.jpg)
+![Boeing747](https://raw.githubusercontent.com/Maker42/openEFIS/master/747Final.JPG)
 
-# openEFIS
 An EFIS system for aircraft. Uses small, inexpensive sensors through an Arduino board.
 Includes an autopilot capable of flying multi-engine drone type VTOL craft, or fixed wing aircraft,
 everything from a Cessna 172 to a 747.
