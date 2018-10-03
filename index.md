@@ -8,7 +8,7 @@ layout: default
 
 This is an X-Plane screen shot taken of the autopilot landing a 747:
 
-![Boeing747](./747ShortFinal.jpg)
+![Boeing747](/openEFIS/747ShortFinal.jpg)
 
 # openEFIS
 An EFIS system for aircraft. Uses small, inexpensive sensors through an Arduino board.
