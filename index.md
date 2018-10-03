@@ -6,6 +6,10 @@ layout: default
 
 ![Sample](SampleImage.jpg)
 
+This is an X-Plane screen shot taken of the autopilot landing a 747:
+
+![Boeing747](747ShortFinal.jpg)
+
 # openEFIS
 An EFIS system for aircraft. Uses small, inexpensive sensors through an Arduino board.
 Includes an autopilot capable of flying multi-engine drone type VTOL craft, or fixed wing aircraft,
