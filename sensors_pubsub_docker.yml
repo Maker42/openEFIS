@@ -122,7 +122,7 @@ flightmode:
   output_values:
       - flight_mode
       - vertical
-  format: i
+  format: 10si
   pubs:
   - {addr: pubsub, port: 49110, protocol: udp, function: FlightModeSource}
   subs:
@@ -437,4 +437,20 @@ PitchRate:
       - {addr: panel, port: 48111, protocol: udp, function: Display}
       - {addr: panel, port: 48112, protocol: udp, function: Autopilot}
       - {addr: eventdb, port: 48113, protocol: udp, function: EventDB}
+
+Autopilot:
+    output_values:
+    format:
+    pubs:
+    subs:
+
+Control:
+    output_values:
+        - channel
+        - value
+    format: ii
+    pubs:
+      - {addr: pubsub, port: 48120, protocol: udp, function: Control}
+    subs:
+      - {addr: 192.168.0.7, port: 48121, protocol: udp, function: ControlSlave}
 

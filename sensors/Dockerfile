@@ -15,7 +15,7 @@ ENV PYTHON_VERSION 3.6.6
 
 RUN pip install pyyaml
 
-VOLUME /home/garrett:/home/garrett
-WORKDIR /home/garrett/Autopilot
+VOLUME /home/openEFIS:/home/openEFIS
+WORKDIR /home/openEFIS/Autopilot
 
 CMD ["python", "RunMicroServices.py"]

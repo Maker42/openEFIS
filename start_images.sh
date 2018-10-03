@@ -1,4 +1,3 @@
-docker run --network autopilot --volume /home/garrett:/home/garrett --name pubsub -dit sensors ash #python3 PubSub.py
-docker run --network autopilot --volume /home/garrett:/home/garrett --name eventdb -dit eventdb ash
-docker run --network autopilot --volume /home/garrett:/home/garrett --name sensor_input -dit sensors ash #python3 MockRawData.py raw_sensors_mock.yml
-docker run --network autopilot --volume /home/garrett:/home/garrett --name sensor_processing -dit sensors ash
+docker run --network autopilot --volume /home/openEFIS:/home/openEFIS --name pubsub -dt sensors python3 PubSub.py
+docker run --network autopilot --volume /home/openEFIS:/home/openEFIS --name eventdb -dt eventdb ./startDB.sh
+docker run --network autopilot --volume /home/openEFIS:/home/openEFIS --name sensor_processing -dt sensors python3 RunMicroServices.py

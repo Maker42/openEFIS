@@ -45,8 +45,8 @@ RUN set -ex \
  && su postgres -c "createdb flight" \
  && su postgres -c "kill -INT `head -1 /usr/local/pgsql/data/postmaster.pid`"
 
-VOLUME /home/garrett:/home/garrett
+VOLUME /home/openEFIS:/home/openEFIS
 USER postgres
-WORKDIR /home/garrett/Autopilot
+WORKDIR /home/openEFIS/Autopilot
 CMD ["./startDB.sh"]
 
