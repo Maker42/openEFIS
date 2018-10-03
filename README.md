@@ -5,6 +5,21 @@ everything from a Cessna 172 to a 747.
 
 To understand the code structure, see Readme.odg
 
+# OpenEFIS Flight Information Display, Sensor Processing and Autopilot
+
+![Sample](./SampleImage.jpg)
+
+This is an X-Plane screen shot taken of the autopilot landing a 747:
+
+![Boeing747](./747ShortFinal.jpg)
+
+# openEFIS
+An EFIS system for aircraft. Uses small, inexpensive sensors through an Arduino board.
+Includes an autopilot capable of flying multi-engine drone type VTOL craft, or fixed wing aircraft,
+everything from a Cessna 172 to a 747.
+
+To understand the code structure, see Readme.odg
+
 There are several ways to install and run this software:
 
 X-Plane Autopilot Test Mode
@@ -21,7 +36,6 @@ the same host (localhost), but if not, you will have to change the
 X-Plane host address to the proper address.
 
 Then run the autopilot:
-
 ```
 Fly.py <aircraft config> <flight plan>
 ```
@@ -45,7 +59,7 @@ To Run:
 4. Display.py on the host with the display
 
 They may all be the same host, 4 different computers, or any combination thereof.
-Modify sensors_pubsub.yml to reflect the correct IP addresses of the hosts you've chosen.
+Modify sensors_pubsub.yml to reflect the correct IP addresses of the hosts you have chosen.
 
 Then invoke:
 ```
