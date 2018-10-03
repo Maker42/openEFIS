@@ -2,122 +2,78 @@
 layout: default
 ---
 
-Text can be **bold**, _italic_, or ~~strikethrough~~.
+# OpenEFIS Flight Information Display, Sensor Processing and Autopilot
 
-[Link to another page](./another-page.html).
+![Sample](SampleImage.jpg)
 
-There should be whitespace between paragraphs.
+# openEFIS
+An EFIS system for aircraft. Uses small, inexpensive sensors through an Arduino board.
+Includes an autopilot capable of flying multi-engine drone type VTOL craft, or fixed wing aircraft,
+everything from a Cessna 172 to a 747.
 
-There should be whitespace between paragraphs. We recommend including a README, or a file with information about your project.
+To understand the code structure, see Readme.odg
 
-# Header 1
+There are several ways to install and run this software:
 
-This is a normal paragraph following a header. GitHub is a code hosting platform for version control and collaboration. It lets you and others work together on projects from anywhere.
+X-Plane Autopilot Test Mode
+------------------------------------------------------------
 
-## Header 2
+Dependencies: X-Plane
 
-> This is a blockquote following a header.
->
-> When something is important enough, you do it even if the odds are not in your favor.
+To run:
+Simply start X-Plane, and select your aircraft. Config files are
+pre-made for Cessna 172, the Avanti, and the Boeing 747.
+ (172.cfg, avanti.cfg, and 747.cfg)
+Those config files assume X-plane and the autopilot are running on
+the same host (localhost), but if not, you will have to change the
+X-Plane host address to the proper address.
 
-### Header 3
+Then run the autopilot:
 
-```js
-// Javascript code with syntax highlighting.
-var fun = function lang(l) {
-  dateformat.i18n = require('./lang/' + l)
-  return true;
-}
-```
+Fly.py <aircraft config> <flight plan>
 
-```ruby
-# Ruby code with syntax highlighting
-GitHubPages::Dependencies.gems.each do |gem, version|
-  s.add_dependency(gem, "= #{version}")
-end
-```
+If you are starting on a runway, a good sample flight plan is takeoff.pln
+Make sure to release the brakes in X-plane right after starting Fly.py -- the autopilot
+does not control brakes.
 
-#### Header 4
+Display an EFIS with real sensors
+---------------------------------------------------------------
+Software Dependencies: pyyaml, pyserial
+Hardware Dependencies: An Arduino Mega with something like an Adafruit 10DOF
+                       sensor board on the I2C bus, and a GPS on an alternate
+                       serial port. Modify sensors.yml as necessary.
 
-*   This is an unordered list following a header.
-*   This is an unordered list following a header.
-*   This is an unordered list following a header.
+To Run:
+4 programs need to run:
+1. PubSub.py
+2. SenseControlRemote.py on the host connected to the Arduino
+3. RunMicroServers.py on the host that will process raw sensor feeds
+4. Display.py on the host with the display
 
-##### Header 5
+They may all be the same host, 4 different computers, or any combination thereof.
+Modify sensors_pubsub.yml to reflect the correct IP addresses of the hosts you've chosen.
 
-1.  This is an ordered list following a header.
-2.  This is an ordered list following a header.
-3.  This is an ordered list following a header.
+Then invoke:
+PubSub.py
+SenseControlRemote.py <USBport>
+RunMicroServers.py
+If you have no pitot tube with a seperate pressure sensor, the sensor processing
+subsystem needs current winds to estimate the airspeed.
+In any case, the sensor processing subsystem needs at least a barometric pressure
+reading to properly compute altitude. To do this:
+SendATISInfo.py # See argument options with the -h command line option
 
-###### Header 6
+Then finally run:
+Display.py
 
-| head1        | head two          | three |
-|:-------------|:------------------|:------|
-| ok           | good swedish fish | nice  |
-| out of stock | good and plenty   | nice  |
-| ok           | good `oreos`      | hmm   |
-| ok           | good `zoute` drop | yumm  |
+Alternatively, you can add a black box event recorder by running sensor processing and
+the event DB in Docker containers:
 
-### There's a horizontal rule below this.
+You will need Docker installed
 
-* * *
+Modify PubSub.py to point to the sensors_pubsub_docker.yml file.
+Create a docker private bridge network:
+docker network create --driver bridge autopilot
 
-### Here is an unordered list:
-
-*   Item foo
-*   Item bar
-*   Item baz
-*   Item zip
-
-### And an ordered list:
-
-1.  Item one
-1.  Item two
-1.  Item three
-1.  Item four
-
-### And a nested list:
-
-- level 1 item
-  - level 2 item
-  - level 2 item
-    - level 3 item
-    - level 3 item
-- level 1 item
-  - level 2 item
-  - level 2 item
-  - level 2 item
-- level 1 item
-  - level 2 item
-  - level 2 item
-- level 1 item
-
-### Small image
-
-![Octocat](https://assets-cdn.github.com/images/icons/emoji/octocat.png)
-
-### Large image
-
-![Branching](https://guides.github.com/activities/hello-world/branching.png)
-
-
-### Definition lists can be used with HTML syntax.
-
-<dl>
-<dt>Name</dt>
-<dd>Godzilla</dd>
-<dt>Born</dt>
-<dd>1952</dd>
-<dt>Birthplace</dt>
-<dd>Japan</dd>
-<dt>Color</dt>
-<dd>Green</dd>
-</dl>
-
-```
-Long, single-line code blocks should not wrap. They should horizontally scroll if they are too long. This line should be long enough to demonstrate this.
-```
-
-```
-The final element.
-```
+build_images.sh     # Builds the required images
+start_images.sh     # Starts the images
