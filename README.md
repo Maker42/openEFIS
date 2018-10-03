@@ -5,6 +5,21 @@ everything from a Cessna 172 to a 747.
 
 To understand the code structure, see Readme.odg
 
+# OpenEFIS Flight Information Display, Sensor Processing and Autopilot
+
+![Sample](./SampleImage.jpg)
+
+This is an X-Plane screen shot taken of the autopilot landing a 747:
+
+![Boeing747](./747ShortFinal.jpg)
+
+# openEFIS
+An EFIS system for aircraft. Uses small, inexpensive sensors through an Arduino board.
+Includes an autopilot capable of flying multi-engine drone type VTOL craft, or fixed wing aircraft,
+everything from a Cessna 172 to a 747.
+
+To understand the code structure, see Readme.odg
+
 There are several ways to install and run this software:
 
 X-Plane Autopilot Test Mode
@@ -21,8 +36,9 @@ the same host (localhost), but if not, you will have to change the
 X-Plane host address to the proper address.
 
 Then run the autopilot:
-
+```
 Fly.py <aircraft config> <flight plan>
+```
 
 If you are starting on a runway, a good sample flight plan is takeoff.pln
 Make sure to release the brakes in X-plane right after starting Fly.py -- the autopilot
@@ -43,20 +59,26 @@ To Run:
 4. Display.py on the host with the display
 
 They may all be the same host, 4 different computers, or any combination thereof.
-Modify sensors_pubsub.yml to reflect the correct IP addresses of the hosts you've chosen.
+Modify sensors_pubsub.yml to reflect the correct IP addresses of the hosts you have chosen.
 
 Then invoke:
+```
 PubSub.py
 SenseControlRemote.py <USBport>
 RunMicroServers.py
+```
 If you have no pitot tube with a seperate pressure sensor, the sensor processing
 subsystem needs current winds to estimate the airspeed.
 In any case, the sensor processing subsystem needs at least a barometric pressure
 reading to properly compute altitude. To do this:
+```
 SendATISInfo.py # See argument options with the -h command line option
+```
 
 Then finally run:
+```
 Display.py
+```
 
 Alternatively, you can add a black box event recorder by running sensor processing and
 the event DB in Docker containers:
@@ -67,5 +89,7 @@ Modify PubSub.py to point to the sensors_pubsub_docker.yml file.
 Create a docker private bridge network:
 docker network create --driver bridge autopilot
 
+```
 build_images.sh     # Builds the required images
 start_images.sh     # Starts the images
+```
