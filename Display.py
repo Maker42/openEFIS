@@ -13,23 +13,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-import sys
-import socket
-import struct
-
-from Common.util import METERS_FOOT
+import time
 
 from MicroServerComs import MicroServerComs
 
+from TkDisplay import StartDisplayWindow
+
 class Display(MicroServerComs):
-    def __init__(self, localportno, xplane_host, xplane_port=49000):
+    def __init__(self):
         MicroServerComs.__init__(self, "Display")
-        self.localport = localportno
-        self.xplane_host = xplane_host
-        self.xplane_port = xplane_port
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.bind (("", localportno))
-        self.sock.setblocking (0)
         self.gps_magnetic_variation = None
         self.altitude = None
         self.airspeed = None
@@ -46,39 +38,21 @@ class Display(MicroServerComs):
         self.gps_ground_track = None
         self.gps_signal_quality = None
         self.gps_magnetic_variation = None
-        self.dvis_struct_preamble = struct.pack("5s", b"DVIS")
-        self.dvis_struct_body = struct.Struct("dddddd")
-        self.dref_struct_preamble = struct.pack("5s", b"DREF")
-        self.dref_struct_body = struct.Struct("f500s")
-        self.additional_data = {
-                 "airspeed":    b"sim/cockpit2/gauges/indicators/airspeed_kts_pilot"
-                ,"climb_rate":   b"sim/cockpit2/gauges/indicators/vvi_fpm_pilot"
-                #,"Compass":     b"sim/cockpit2/gauges/indicators/compass_heading_deg_mag"
-                ,"yaw":         b"sim/cockpit2/gauges/indicators/slip_deg"
-                ,"altitude":    b"sim/cockpit2/gauges/indicators/altitude_ft_pilot"
-                ,"turn_rate":    b"sim/cockpit2/gauges/indicators/turn_rate_heading_deg_pilot"
-                ,"heading":     b"sim/cockpit2/gauges/indicators/heading_electric_deg_mag_pilot"
-                ,"pitch":       b"sim/cockpit2/gauges/indicators/pitch_vacuum_deg_pilot"
-                ,"roll":        b"sim/cockpit2/gauges/indicators/roll_vacuum_deg_pilot"
-                }
+        self.display_window = StartDisplayWindow()
+        self.update_period = 1.0/30.0
+        self.next_update_time = time.time() + self.update_period
 
     def updated(self, channel):
-        if channel == 'Roll' and self.AreSensorsGreen():
-            # Send new visual data to Xplane
-            dvis = self.dvis_struct_preamble + \
-                    self.dvis_struct_body.pack(
-                            self.gps_lat,
-                            self.gps_lng,
-                            self.altitude * METERS_FOOT,
-                            round(self.heading - self.gps_magnetic_variation),
-                            round(self.pitch),
-                            round(self.roll))
-            self.sock.sendto (dvis, (self.xplane_host, self.xplane_port))
-
-            for attr,dest in self.additional_data.items():
-                pack = self.dref_struct_preamble + \
-                    self.dref_struct_body.pack (getattr(self, attr), dest)
-                self.sock.sendto (pack, (self.xplane_host, self.xplane_port))
+        tm = time.time()
+        if channel == 'Roll' and self.AreSensorsGreen() and tm >= self.next_update_time:
+            self.display_window.display_horizon (self.pitch, self.roll)
+            self.display_window.display_airspeed (self.airspeed)
+            self.display_window.display_altitude (self.altitude)
+            self.display_window.display_climb_rate (self.climb_rate)
+            self.display_window.display_instruments (self.heading, None, self.turn_rate, self.yaw)
+            while self.next_update_time < tm:
+                self.next_update_time += self.update_period
+            self.display_window.update()
 
     def AreSensorsGreen(self):
         ret = not (self.gps_ground_speed is None or 
@@ -96,13 +70,5 @@ class Display(MicroServerComs):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        xplanehost = sys.argv[1]
-    else:
-        xplanehost = 'localhost'
-    if len(sys.argv) > 2:
-        localport = sys.argv[2]
-    else:
-        localport = 47951
-    display = Display(localport, xplanehost)
+    display = Display()
     display.listen()

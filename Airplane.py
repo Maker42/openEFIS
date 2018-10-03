@@ -251,8 +251,7 @@ class Airplane(FileConfig.FileConfig):
 
     def init_sensors(self, args, filelines):
         self._sensors = eval(' '.join(args[1:]))
-        self._sensors.initialize(filelines,
-                                self.known_altitude,
+        self._sensors.initialize(self.known_altitude,
                                 self.given_barometer,
                                 self.winds)
         self._sensors.WaitSensorsGreen()

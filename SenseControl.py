@@ -103,7 +103,7 @@ class Sensors(MicroServerComs):
         self.gps_signal_quality = None
         self.gps_magnetic_variation = None
 
-    def initialize(self, filelines, alt, barometer, wind):
+    def initialize(self, alt, barometer, wind):
         if alt is not None:
             self.KnownAltitude (alt)
         if barometer is not None:

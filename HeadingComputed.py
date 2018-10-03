@@ -26,6 +26,10 @@ class HeadingComputed(MicroServerComs):
         mag_vector = Vector(self.m_x, self.m_z, self.m_y)
         mag_polar = mag_vector.to_polar(limit_phi = True, robot_coordinates=False)
         mag_heading = self._calibrated_heading (mag_polar.theta * util.DEG_RAD)
+        while mag_heading < 0:
+            mag_heading += 360
+        while mag_heading >= 360:
+            mag_heading -= 360
         self.heading_computed = int(round(mag_heading))
         self.timestamp = self.magneticsensors_updated
 

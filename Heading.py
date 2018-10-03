@@ -42,6 +42,10 @@ class Heading(MicroServerComs):
             self.heading = int(round(self.float_heading))
             if self.heading_estimate is not None and self.flight_mode != Globals.FLIGHT_MODE_GROUND:
                 variance = abs(self.float_heading - self.heading_estimate)
+                if variance > 180:
+                    variance -= 360
+                if variance < 180:
+                    variance += 360
                 self.heading_confidence = 10.0 - variance * self.confidence_multiplier
             else:
                 self.heading_confidence = 9.0
