@@ -11,7 +11,7 @@ To understand the code structure, see Readme.odg
 
 This is an X-Plane screen shot taken of the autopilot landing a 747:
 
-![Boeing747](https://raw.githubusercontent.com/Maker42/openEFIS/master/747ShortFinal.JPG)
+![Boeing747](https://raw.githubusercontent.com/Maker42/openEFIS/master/747Final.JPG)
 
 # openEFIS
 An EFIS system for aircraft. Uses small, inexpensive sensors through an Arduino board.
