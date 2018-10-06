@@ -195,7 +195,8 @@ class Sensors(MicroServerComs):
         self.listen (timeout=0, loop=False)
         if self.gps_ground_speed is not None and \
                 self.altitude is not None and \
-                self.wind_report is not None:
+                self.wind_report is not None and \
+                self.wind_report[0] is not None:
             direction,speed = self.wind_report
             print ("Making wind report %s"%( str ((
                     self.gps_lat, self.gps_lng, self.altitude,

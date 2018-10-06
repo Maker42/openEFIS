@@ -49,16 +49,16 @@ class TkDisplay(tk.Frame):
         middle_height = self.attitude_height / 2 - pitch * self.pixels_pitch
         side_offset = math.sin(roll * RAD_DEG) * self.attitude_width / 2
         self.attitude_items = list()
-        p = self.attitude.create_polygon (0,middle_height+side_offset,
-                self.attitude_width,middle_height-side_offset,
+        p = self.attitude.create_polygon (0,middle_height-side_offset,
+                self.attitude_width,middle_height+side_offset,
                 self.attitude_width,self.attitude_height,
                 0,self.attitude_height,
                 fill="green")
         self.attitude_items.append(p)
         p = self.attitude.create_polygon (0,0,
                 self.attitude_width,0,
-                self.attitude_width,middle_height-side_offset,
-                0,middle_height+side_offset,
+                self.attitude_width,middle_height+side_offset,
+                0,middle_height-side_offset,
                 fill="blue")
         self.attitude_items.append(p)
         self.display_pitchlines()
@@ -337,8 +337,8 @@ class TkDisplay(tk.Frame):
         self.instruments_items.append(hashmark)
         trneedle_x1 = tr_x-(trwidth_2)*math.cos(turn_rate * std_turn_deflection/std_turn_rate * RAD_DEG)
         trneedle_x2 = tr_x+(trwidth_2)*math.cos(turn_rate * std_turn_deflection/std_turn_rate * RAD_DEG)
-        trneedle_y1 = tr_y+(trwidth_2)*math.sin(turn_rate * std_turn_deflection/std_turn_rate * RAD_DEG)
-        trneedle_y2 = tr_y-(trwidth_2)*math.sin(turn_rate * std_turn_deflection/std_turn_rate * RAD_DEG)
+        trneedle_y1 = tr_y-(trwidth_2)*math.sin(turn_rate * std_turn_deflection/std_turn_rate * RAD_DEG)
+        trneedle_y2 = tr_y+(trwidth_2)*math.sin(turn_rate * std_turn_deflection/std_turn_rate * RAD_DEG)
         needle = self.instruments.create_line (trneedle_x1,trneedle_y1,
                 trneedle_x2,trneedle_y2, width=2)
         self.instruments_items.append(needle)
