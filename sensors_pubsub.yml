@@ -160,7 +160,7 @@ HeadingComputed:
     output_values:
         - timestamp
         - heading_computed
-    format: di
+    format: df
     pubs:
       - {protocol: internal, function: HeadingComputed}
     subs:
@@ -225,7 +225,7 @@ AltitudeComputed:
     output_values:
         - timestamp
         - altitude_computed
-    format: di
+    format: df
     pubs:
       - {protocol: internal, function: AltitudeComputed}
     subs:

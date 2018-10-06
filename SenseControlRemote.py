@@ -39,14 +39,14 @@ arduino_messages = [
 # Messages from sense/control board
  "ack"                          # arguments description:
 ,"nack"                         # reason for nack
-,"sensor_reading"               # channel, value, timestamp
+,"sensor_reading"               # channel, value, timestamp, nsubsamples
 ,"log"                          # loglevel, string
 
 # Messages from this program to the board
 ,"setup_digital_sensor"         # channel, pin, polling period (ms), use internal pullup (0 or 1)
-,"setup_analog_sensor"          # channel, pin, polling period (ms)
-,"setup_i2c_sensor"             # channel, function, polling period (ms)
-,"setup_spi_sensor"             # channel, function, polling period (ms)
+,"setup_analog_sensor"          # channel, pin, polling period (ms), filter_coefficients, secondary_band, rejection_band, secondary_duration
+,"setup_i2c_sensor"             # channel, function, polling period (ms), filter_coefficients, secondary_band, rejection_band, secondary_duration
+,"setup_spi_sensor"             # channel, function, polling period (ms), filter_coefficients, secondary_band, rejection_band, secondary_duration
 ,"setup_serial_sensor"          # channel, function, type, port number
 ,"setup_analog_output"          # pin, initial_value
 ,"setup_digital_output"         # pin, initial_value
@@ -71,24 +71,24 @@ class SenseControlSlave(MicroServerComs):
             if config_term.startswith ('cal'):
                 self._calibrations.update (cfg)
             elif cfg[0].startswith ('sensor'):
+                function = cfg[1]
                 if cfg[0] == 'sensor_digital':
-                    _,function,pin,period = cfg
-                    self._mainCmd.sendCmd ("setup_digital_sensor", [sensor_chnum, pin, period])
+                    resp = self._mainCmd.sendCmd ("setup_digital_sensor", [sensor_chnum] + cfg[1:])
+                    function = 'd'
                 elif cfg[0] == 'sensor_analog':
-                    _,function,pin,period = cfg
-                    self._mainCmd.sendCmd ("setup_analog_sensor", [sensor_chnum, pin, period])
+                    resp = self._mainCmd.sendCmd ("setup_analog_sensor", [sensor_chnum] + cfg[1:])
+                    function = 'n'
                 elif cfg[0] == 'sensor_i2c':
-                    _,function,period = cfg
-                    self._mainCmd.sendCmd ("setup_i2c_sensor", [sensor_chnum, function, period])
+                    resp = self._mainCmd.sendCmd ("setup_i2c_sensor", [sensor_chnum] + cfg[1:])
                 elif cfg[0] == 'sensor_spi':
-                    _,function,period = cfg
-                    self._mainCmd.sendCmd ("setup_spi_sensor", [sensor_chnum, function, period])
+                    resp = self._mainCmd.sendCmd ("setup_spi_sensor", [sensor_chnum] + cfg[1:])
                 elif cfg[0] == 'sensor_serial':
-                    _,function,port,stype = cfg
-                    self._mainCmd.sendCmd ("setup_serial_sensor", [sensor_chnum, function,
-                                    port, stype])
+                    resp = self._mainCmd.sendCmd ("setup_serial_sensor", [sensor_chnum] + cfg[1:])
                 else:
                     raise RuntimeError ("Unsupported sensor type: %s"%cfg[0])
+                if resp is not None:
+                    for r in resp:
+                        self.ProcessResponse(r)
                 self._sensors[sensor_chnum] = function
                 sensor_chnum += 1
         MicroServerComs.__init__(self, "ControlSlave")
@@ -109,20 +109,25 @@ class SenseControlSlave(MicroServerComs):
         global rootlogger
         while True:
             cmd = self._mainCmd.read_command (0)
-            if cmd is not None:
-                name, args, ts = cmd
-                if name == 'sensor_reading':
-                    ch = args[0]
-                    if not ch in self._sensors:
-                        rootlogger.error ("Invalid sensor channel received from board: %d"%ch)
-                    else:
-                        function = self._sensors[ch]
-                        self.sensor_updated (function, args[1:])
-                if name == 'log':
-                    loglevel,log_string = args
-                    rootlogger.log (loglevel, "scboard: " + log_string)
-            else:
+            if not self.ProcessResponse (cmd):
                 break
+
+    def ProcessResponse(self, cmd):
+        if cmd is not None:
+            name, args, ts = cmd
+            if name == 'sensor_reading':
+                ch = args[0]
+                if not ch in self._sensors:
+                    rootlogger.error ("Invalid sensor channel received from board: %d"%ch)
+                else:
+                    function = self._sensors[ch]
+                    self.sensor_updated (function, args[1:])
+            if name == 'log':
+                loglevel,log_string = args
+                rootlogger.log (loglevel, "scboard: " + log_string)
+            return True
+        else:
+            return False
 
     def sensor_updated(self, function, args):
         """ function labels used by sensor board:
@@ -171,21 +176,53 @@ class SenseControlSlave(MicroServerComs):
             raise RuntimeError ("analog input not implemented")
 
 
-class Accelerometers(MicroServerComs):
+class SampleCounter():
+    def __init__(self, pp=50):
+        self.sc_min = 9999999
+        self.sc_max = 0
+        self.sc_sum = 0
+        self.sc_count = 0
+        self.reject_count = 0
+        self.secondary_count = 0
+        self.print_period = pp
+
+    def update_counts(self, secondary, rj):
+        if self.sample_count < self.sc_min:
+            self.sc_min = self.sample_count
+        if self.sample_count > self.sc_max:
+            self.sc_max = self.sample_count
+        self.sc_sum += self.sample_count
+        self.sc_count += 1
+        self.reject_count += rj
+        self.secondary_count += secondary
+        if self.sc_count >= self.print_period:
+            print ("%s: min %d, max %d, mean %g; sec %d, rej %d"%(str(type(self)),
+                self.sc_min, self.sc_max, float(self.sc_sum) / float(self.sc_count),
+                self.secondary_count, self.reject_count))
+            self.sc_min = 9999999
+            self.sc_max = 0
+            self.sc_sum = 0
+            self.sc_count = 0
+            self.secondary_count = 0
+            self.reject_count = 0
+
+class Accelerometers(MicroServerComs,SampleCounter):
     def __init__(self):
         self.a_x = None
         self.a_y = None
         self.a_z = None
         self.timestamp = None
         MicroServerComs.__init__(self, "RawAccelerometers", channel='accelerometers')
+        SampleCounter.__init__(self)
 
     def send(self, args, calibration):
-        self.a_x, self.a_y, self.a_z, ts = args
+        self.a_x, self.a_y, self.a_z, ts, self.sample_count, secondary, rj = args
+        self.update_counts(secondary, rj)
         self.timestamp = make_timestamp (ts)
         #print ("accel %g,%g,%g"%(self.a_x, self.a_y, self.a_z))
         self.publish()
 
-class Rotation(MicroServerComs):
+class Rotation(MicroServerComs,SampleCounter):
     def __init__(self):
         self.r_x = None
         self.r_y = None
@@ -195,9 +232,11 @@ class Rotation(MicroServerComs):
         self.timestamp = None
         self.print_count = 0
         MicroServerComs.__init__(self, "RawRotationSensors", channel='rotationsensors')
+        SampleCounter.__init__(self)
 
     def send(self, args, calibration):
-        self.r_x, self.r_y, self.r_z, ts = args
+        self.r_x, self.r_y, self.r_z, ts, self.sample_count, secondary, rj = args
+        self.update_counts(secondary, rj)
         if calibration:
             if isinstance (calibration[0],str) and calibration[0] == 'collect':
                 if self.cal_collection_count < calibration [1]:
@@ -225,42 +264,50 @@ class Rotation(MicroServerComs):
             print ("rotation %g,%g,%g"%(self.r_x, self.r_y, self.r_z))
         self.publish()
 
-class Magnetic(MicroServerComs):
+class Magnetic(MicroServerComs,SampleCounter):
     def __init__(self):
         self.m_x = None
         self.m_y = None
         self.m_z = None
         self.timestamp = None
         MicroServerComs.__init__(self, "RawMagneticSensors", channel='magneticsensors')
+        SampleCounter.__init__(self)
 
     def send(self, args, calibration):
-        self.m_x, self.m_y, self.m_z, ts = args
+        self.m_x, self.m_y, self.m_z, ts, self.sample_count, secondary, rj = args
+        self.update_counts(secondary, rj)
         self.timestamp = make_timestamp (ts)
         #print ("magnetic %g,%g,%g"%(self.m_x, self.m_y, self.m_z))
         self.publish()
 
-class Pressure(MicroServerComs):
+class Pressure(MicroServerComs,SampleCounter):
     def __init__(self):
         self.static_pressure = None
         self.pitot_pressure = None
         self.timestamp = None
+        self.sc_min = 9999999
+        self.sc_max = 0
         MicroServerComs.__init__(self, "RawPressureSensors", channel='pressuresensors')
+        SampleCounter.__init__(self, 10)
 
     def send(self, args, calibration):
-        self.static_pressure, self.pitot_pressure, ts = args
+        self.static_pressure, self.pitot_pressure, ts, self.sample_count, secondary, rj = args
+        self.update_counts(secondary, rj)
         self.static_pressure /= 1000.0
         self.pitot_pressure /= 1000.0
         self.timestamp = make_timestamp (ts)
         #print ("pressure %g,%g"%(self.static_pressure, self.pitot_pressure))
         self.publish()
 
-class Temperature(MicroServerComs):
+class Temperature(MicroServerComs,SampleCounter):
     def __init__(self):
         self.temperature = None
         MicroServerComs.__init__(self, "RawTemperatureSensors", channel='temperaturesensors')
+        SampleCounter.__init__(self, 10)
 
     def send(self, args, calibration):
-        self.temperature = args[0]
+        self.temperature, self.sample_count, secondary, rj = args
+        self.update_counts(secondary, rj)
         #print ("temp %g"%(self.temperature))
         self.publish()
 
@@ -280,7 +327,8 @@ class GPS(MicroServerComs):
     def send(self, args):
         nmea_string,ts = args
         ParseNMEAStrings (nmea_string, self)
-        if self.HaveNewPosition and self.gps_ground_speed is not None:
+        if self.HaveNewPosition and self.gps_ground_speed is not None and \
+                self.gps_lat is not None:
             update_time_offset (self.gps_utc, ts)
             self.HaveNewPosition = False
             print ("gps: %g,%g,%g,%d,%d,%d,%d,%g"%(

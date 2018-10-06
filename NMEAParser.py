@@ -86,6 +86,7 @@ def ParseNMEAStrings(nmea, data_container):
                     data_container.gps_lng = None
                     data_container.gps_altitude = None
                     data_container.gps_signal_quality = 0
+                    data_container.HaveNewPosition = False
                     logger.error("NMEA got GGA with no signal quality")
             except Exception as e:
                 logger.debug("Unexpected GGA from GPS: %s (%s)", str(fields), str(e))
@@ -114,6 +115,7 @@ def ParseNMEAStrings(nmea, data_container):
                     data_container.gps_ground_speed = None
                     data_container.gps_ground_track = None
                     data_container.gps_magnetic_variation = None
+                    data_container.HaveNewGroundTrack = False
                     logger.debug("NMEA got void RMC")
             except Exception as e:
                 logger.debug("Unexpected RMC from GPS: %s (%s)", str(fields), str(e))

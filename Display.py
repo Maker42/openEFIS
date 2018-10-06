@@ -48,15 +48,14 @@ class Display(MicroServerComs):
             self.display_window.display_horizon (self.pitch, self.roll)
             self.display_window.display_airspeed (self.airspeed)
             self.display_window.display_altitude (self.altitude)
-            self.display_window.display_climb_rate (self.climb_rate)
+            self.display_window.display_climb_rate (int(round(self.climb_rate/10)*10))
             self.display_window.display_instruments (self.heading, None, self.turn_rate, self.yaw)
             while self.next_update_time < tm:
                 self.next_update_time += self.update_period
             self.display_window.update()
 
     def AreSensorsGreen(self):
-        ret = not (self.gps_ground_speed is None or 
-                self.altitude is None or 
+        ret = not (self.altitude is None or 
                 self.airspeed is None or 
                 self.heading is None or 
                 self.roll is None or 

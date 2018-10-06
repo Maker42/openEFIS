@@ -69,6 +69,15 @@ void Onsetup_analog_sensor()
     channels[chan].function = 'n';
     channels[chan].pin = pin;
     channels[chan].period = period;
+    channels[chan].filter_coefficient[0] = cmdMessenger.readFloatArg();
+    channels[chan].filter_coefficient[1] = cmdMessenger.readFloatArg();
+    channels[chan].rejection_band = cmdMessenger.readFloatArg();
+    channels[chan].secondary_band = cmdMessenger.readFloatArg();
+    channels[chan].secondary_filter_duration = (unsigned)cmdMessenger.readInt32Arg();
+    channels[chan].secondary_filter_count = 0;
+    channels[chan].sample_count = 0;
+    channels[chan].reject_count = 0;
+    channels[chan].secondary_use_count = 0;
     channels[chan].next_time = millis() + period;
   }
 }
@@ -78,6 +87,9 @@ void Onsetup_i2c_sensor()
   int16_t   chan;
   char      function;
   int32_t   period;
+  float     pressure, temperature;
+  sensors_event_t   event;
+
   chan = cmdMessenger.readInt16Arg();
   if ((chan >= NELEMENTS(channels)) || (chan < 0))
   {
@@ -89,27 +101,67 @@ void Onsetup_i2c_sensor()
       period = cmdMessenger.readInt32Arg();
       channels[chan].function = function;
       channels[chan].period = period;
+      channels[chan].filter_coefficient[0] = cmdMessenger.readFloatArg();
+      channels[chan].filter_coefficient[1] = cmdMessenger.readFloatArg();
+      channels[chan].secondary_band = cmdMessenger.readFloatArg();
+      channels[chan].rejection_band = cmdMessenger.readFloatArg();
+      channels[chan].secondary_filter_duration = (unsigned)cmdMessenger.readInt32Arg();
+      channels[chan].secondary_filter_count = 0;
+      channels[chan].sample_count = 0;
+      channels[chan].reject_count = 0;
+      channels[chan].secondary_use_count = 0;
       channels[chan].next_time = millis() + period;
       switch (function)
       {
         case 'a':
-          function2chan[accel_function] = chan;
+          if (accSensorEnabled)
+          {
+              accSensor.getEvent(&event);
+              channels[chan].state[0] = event.orientation.x;
+              channels[chan].state[1] = event.orientation.y;
+              channels[chan].state[2] = event.orientation.z;
+              function2chan[accel_function] = chan;
+          }
           break;
         case 'r':
-          function2chan[rotation_function] = chan;
+          if (gyroSensorEnabled)
+          {
+              gyroSensor.read();
+              channels[chan].state[0] = gyroSensor.data.x;
+              channels[chan].state[1] = gyroSensor.data.y;
+              channels[chan].state[2] = gyroSensor.data.z;
+              function2chan[rotation_function] = chan;
+          }
           break;
         case 'm':
-          function2chan[magnetic_function] = chan;
+          if (magSensorEnabled)
+          {
+              magSensor.getEvent(&event);
+              channels[chan].state[0] = event.magnetic.x;
+              channels[chan].state[1] = event.magnetic.y;
+              channels[chan].state[2] = event.magnetic.z;
+              function2chan[magnetic_function] = chan;
+          }
           break;
         case 'p':
-          function2chan[pressure_function] = chan;
+          if (bmpSensorEnabled)
+          {
+              bmpSensor.getPressure(&pressure);
+              channels[chan].state[0] = pressure;
+              function2chan[pressure_function] = chan;
+          }
           break;
         case 't':
-          function2chan[temp_function] = chan;
+          if (bmpSensorEnabled)
+          {
+              bmpSensor.getTemperature(&temperature);
+              channels[chan].state[0] = temperature;
+              function2chan[temp_function] = chan;
+          }
           break;
         default:
             good = false;
-            cmdMessenger.sendCmd(nack, "Invalid I2C funciton");
+            cmdMessenger.sendCmd(nack, "Invalid I2C function");
             break;
       }
       if (good) cmdMessenger.sendCmd(ack);
@@ -310,6 +362,44 @@ void pollGps()
   }
 }
 
+void filter_channel (pChannel pch, int ninputs, float input[])
+{
+    int     in, filter = 0;
+    float   diff[3], adiff;
+    bool    trigger_secondary = false;
+
+    for (in = 0; in < ninputs; in++)
+    {
+        diff[in] = input[in] - pch->state[in];
+        adiff = ABS(diff[in]);
+        if (adiff > pch->rejection_band)
+        {   // Reject all inputs from this sample. They are all suspect
+            pch->reject_count++;
+            return;
+        }
+        if (adiff > pch->secondary_band)
+        {   trigger_secondary = true; }
+    }
+    if (trigger_secondary)                  // If we get more large sensor movement,
+    {   pch->secondary_filter_count = 1; }  // reset the filter count for more responsiveness
+    if (pch->secondary_filter_count > 0)
+    {
+        filter = 1;
+        pch->secondary_use_count++;
+    }
+    for (in = 0; in < ninputs; in++)
+    {
+        pch->state[in] += pch->filter_coefficient[filter] * diff[in];
+    }
+    if (pch->secondary_filter_count > 0)
+    {
+        pch->secondary_filter_count++;
+        if (pch->secondary_filter_count >= pch->secondary_filter_duration)
+        {   pch->secondary_filter_count = 0;    }
+    }
+    pch->sample_count++;
+}
+
 void setup()
 {
   // put your setup code here, to run once:
@@ -332,10 +422,8 @@ void loop()
 {
   float   pressure, temperature;
   sensors_event_t   event;
-  long  sleeptime = 0x7ffffff;
   pChannel          pch;
   
-  pollGps();
   // put your main code here, to run repeatedly:
   cmdMessenger.feedinSerialData();
   pollGps();
@@ -344,131 +432,141 @@ void loop()
   long          timediff;
   int           channel;
   // Get 10DOF readings
-  if ((bmpSensorEnabled) && (function2chan[pressure_function] != 0xff))
+  if (function2chan[pressure_function] != 0xff)
   {
     channel = function2chan[pressure_function];
     pch = &(channels[channel]);
+    bmpSensor.getPressure(&pressure);
+    filter_channel (pch, 1, &pressure);
     timediff = (long)pch->next_time - (long)ms;
     if (timediff <= 0)
     {
-        bmpSensor.getPressure(&pressure);
         cmdMessenger.sendCmdStart (sensor_reading);
         cmdMessenger.sendCmdArg (channel);
-        cmdMessenger.sendCmdArg (pressure);
+        cmdMessenger.sendCmdArg (pch->state[0]);
         cmdMessenger.sendCmdArg ((float)0); // Pitot pressure not implemented yet
         cmdMessenger.sendCmdArg (ms);
+        cmdMessenger.sendCmdArg (pch->sample_count);
+        cmdMessenger.sendCmdArg (pch->secondary_use_count);
+        cmdMessenger.sendCmdArg (pch->reject_count);
         cmdMessenger.sendCmdEnd ();
         pch->next_time += pch->period;
-        timediff += pch->period;
-        if (timediff < sleeptime)
-        {
-            sleeptime = timediff;
-        }
+        pch->sample_count = 0;
+        pch->reject_count = 0;
+        pch->secondary_use_count = 0;
     }
   }
 
   pollGps();
   ms = millis();
 
-  if ((bmpSensorEnabled) && (function2chan[temp_function] != 0xff))
+  if (function2chan[temp_function] != 0xff)
   {
     channel = function2chan[temp_function];
     pch = &(channels[channel]);
+    bmpSensor.getTemperature(&temperature);
+    filter_channel (pch, 1, &temperature);
     timediff = (long)pch->next_time - (long)ms;
     if (timediff <= 0)
     {
-        bmpSensor.getTemperature(&temperature);
         cmdMessenger.sendCmdStart (sensor_reading);
         cmdMessenger.sendCmdArg (channel);
-        cmdMessenger.sendCmdArg (temperature);
+        cmdMessenger.sendCmdArg (pch->state[0]);
+        cmdMessenger.sendCmdArg (pch->sample_count);
+        cmdMessenger.sendCmdArg (pch->secondary_use_count);
+        cmdMessenger.sendCmdArg (pch->reject_count);
         cmdMessenger.sendCmdEnd ();
         pch->next_time += pch->period;
-        timediff += pch->period;
-        if (timediff < sleeptime)
-        {
-            sleeptime = timediff;
-        }
+        pch->sample_count = 0;
+        pch->reject_count = 0;
+        pch->secondary_use_count = 0;
     }
   }
 
   pollGps();
   ms = millis();
 
-  if ((gyroSensorEnabled) && (function2chan[rotation_function] != 0xff))
+  if (function2chan[rotation_function] != 0xff)
   {
     channel = function2chan[rotation_function];
     pch = &(channels[channel]);
+    gyroSensor.read();
+    filter_channel (pch, 3, &(gyroSensor.data.x));
     timediff = (long)pch->next_time - (long)ms;
     if (timediff <= 0)
     {
-        gyroSensor.read();
         cmdMessenger.sendCmdStart (sensor_reading);
         cmdMessenger.sendCmdArg (channel);
-        cmdMessenger.sendCmdArg (gyroSensor.data.x);
-        cmdMessenger.sendCmdArg (gyroSensor.data.y);
-        cmdMessenger.sendCmdArg (gyroSensor.data.z);
+        cmdMessenger.sendCmdArg (pch->state[0]);
+        cmdMessenger.sendCmdArg (pch->state[1]);
+        cmdMessenger.sendCmdArg (pch->state[2]);
         cmdMessenger.sendCmdArg (ms);
+        cmdMessenger.sendCmdArg (pch->sample_count);
+        cmdMessenger.sendCmdArg (pch->secondary_use_count);
+        cmdMessenger.sendCmdArg (pch->reject_count);
         cmdMessenger.sendCmdEnd ();
         pch->next_time += pch->period;
-        timediff += pch->period;
-        if (timediff < sleeptime)
-        {
-            sleeptime = timediff;
-        }
+        pch->sample_count = 0;
+        pch->reject_count = 0;
+        pch->secondary_use_count = 0;
     }
   }
 
   pollGps();
   ms = millis();
 
-  if ((accSensorEnabled) && (function2chan[accel_function] != 0xff))
+  if (function2chan[accel_function] != 0xff)
   {
     channel = function2chan[accel_function];
     pch = &(channels[channel]);
+    accSensor.getEvent(&event);
+    filter_channel (pch, 3, event.orientation.v);
     timediff = (long)pch->next_time - (long)ms;
     if (timediff <= 0)
     {
-        accSensor.getEvent(&event);
         cmdMessenger.sendCmdStart (sensor_reading);
         cmdMessenger.sendCmdArg (channel);
-        cmdMessenger.sendCmdArg (event.orientation.x);
-        cmdMessenger.sendCmdArg (event.orientation.y);
-        cmdMessenger.sendCmdArg (event.orientation.z);
+        cmdMessenger.sendCmdArg (pch->state[0]);
+        cmdMessenger.sendCmdArg (pch->state[1]);
+        cmdMessenger.sendCmdArg (pch->state[2]);
         cmdMessenger.sendCmdArg (event.timestamp);
+        cmdMessenger.sendCmdArg (pch->sample_count);
+        cmdMessenger.sendCmdArg (pch->secondary_use_count);
+        cmdMessenger.sendCmdArg (pch->reject_count);
         cmdMessenger.sendCmdEnd ();
         pch->next_time += pch->period;
-        timediff += pch->period;
-        if (timediff < sleeptime)
-        {
-            sleeptime = timediff;
-        }
+        pch->sample_count = 0;
+        pch->reject_count = 0;
+        pch->secondary_use_count = 0;
     }
   }
 
   pollGps();
   ms = millis();
 
-  if ((magSensorEnabled) && (function2chan[magnetic_function] != 0xff))
+  if (function2chan[magnetic_function] != 0xff)
   {
     channel = function2chan[magnetic_function];
     pch = &(channels[channel]);
+    magSensor.getEvent(&event);
+    filter_channel (pch, 3, event.magnetic.v);
     timediff = (long)pch->next_time - (long)ms;
     if (timediff <= 0)
     {
-        magSensor.getEvent(&event);
         cmdMessenger.sendCmdStart (sensor_reading);
         cmdMessenger.sendCmdArg (channel);
         cmdMessenger.sendCmdArg (event.magnetic.x);
         cmdMessenger.sendCmdArg (event.magnetic.y);
         cmdMessenger.sendCmdArg (event.magnetic.z);
         cmdMessenger.sendCmdArg (event.timestamp);
+        cmdMessenger.sendCmdArg (pch->sample_count);
+        cmdMessenger.sendCmdArg (pch->secondary_use_count);
+        cmdMessenger.sendCmdArg (pch->reject_count);
         cmdMessenger.sendCmdEnd ();
         pch->next_time += pch->period;
-        timediff += pch->period;
-        if (timediff < sleeptime)
-        {
-            sleeptime = timediff;
-        }
+        pch->sample_count = 0;
+        pch->reject_count = 0;
+        pch->secondary_use_count = 0;
     }
   }
 
@@ -496,14 +594,7 @@ void loop()
             cmdMessenger.sendCmdEnd ();
             
             pch->next_time += pch->period;
-            timediff = (long)pch->next_time - (long)ms;
-        }
-        if (timediff < sleeptime)
-        {
-            sleeptime = timediff;
         }
     }
   }
-  if (sleeptime > 1) sleeptime = 1;
-  if (sleeptime > 0) delay (sleeptime);
 }

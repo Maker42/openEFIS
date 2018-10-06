@@ -61,10 +61,20 @@ enum
 
 typedef struct
 {
-    char        function;
-    uint8_t     pin;
     uint32_t    period;
     uint32_t    next_time;
+    float       filter_coefficient[2];
+    float       state[3];
+    uint32_t    sample_count;
+    float       secondary_band;
+    float       rejection_band;
+    unsigned    secondary_filter_duration;
+    unsigned    secondary_filter_count;
+    unsigned    reject_count;
+    unsigned    secondary_use_count;
+
+    char        function;
+    uint8_t     pin;
 } sChannel;
 
 typedef sChannel    *pChannel;
@@ -84,5 +94,6 @@ enum
 
 #define NELEMENTS(x)        (sizeof(x) / sizeof(x[0]))
 #define MIN(x,y)            ((x) < (y) ? (x) : (y))
+#define ABS(x)              ((x) < 0 ? -(x) : (x))
 
 void cmdLog(unsigned level, const char *s);

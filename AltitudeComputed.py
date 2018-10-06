@@ -38,7 +38,7 @@ class AltitudeComputed(MicroServerComs):
                     self.sea_level_pressure / self.static_pressure, 1/PRESSURE_POWER)-1) *
                         (self.temperature + KELVIN_OFFSET)) / PRESSURE_DIVISOR
                 self.altitude_computed *= util.FEET_METER
-                self.altitude_computed = int(round(self.altitude_computed))
+                self.altitude_computed = self.altitude_computed
                 self.publish ()
                 print ("AltitudeComputed: %d"%self.altitude_computed)
             else:
