@@ -110,19 +110,12 @@ def run_channel (*args, **kwargs):
                 exception_list.append (newsock.fileno())
             else:
                 message = s.recv(MAX_DATA_SIZE)
-                todelete = list()
                 for fileno,(sock,chname,function) in subs.items():
                     try:
                         #print ("PubSub sending to %s"%chname)
                         sock.sendall (message)
-                    except Exception as e:
-                        print ("deleting socket channel %s, function %s, unable to send (%s)"%(
-                           str(e), chname, function))
-                        todelete.append (fileno)
-                for f in todelete:
-                    del subs[f]
-                    del exception_list[exception_list.index(f)]
-
+                    except:
+                        pass
 
 
 if __name__ == "__main__":
