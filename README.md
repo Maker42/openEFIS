@@ -7,7 +7,7 @@ To understand the code structure, see Readme.odg
 
 # OpenEFIS Flight Information Display, Sensor Processing and Autopilot
 
-![Sample](https://raw.githubusercontent.com/Maker42/openEFIS/gh-pages/SampleImage.jpg)
+![Sample](https://raw.githubusercontent.com/Maker42/openEFIS/master/SampleImage.jpg)
 
 This is an X-Plane screen shot taken of the autopilot landing a 747:
 
