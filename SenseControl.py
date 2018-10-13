@@ -107,7 +107,7 @@ class Sensors(MicroServerComs):
         if alt is not None:
             self.KnownAltitude (alt)
         if barometer is not None:
-            pass    # Not implemented yet
+            self._given_barometer.send(barometer)
         self.wind_report = wind
 
     def FlightMode(self, mode, vertical = 1):

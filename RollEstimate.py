@@ -17,7 +17,7 @@
 from MicroServerComs import MicroServerComs
 
 class RollEstimate(MicroServerComs):
-    def __init__(self, tcf=5.0):
+    def __init__(self, tcf=-5.0):
         # tcf default: 5 degree roll will make 1 degree / s heading change
         MicroServerComs.__init__(self, "RollEstimate")
         self.TurnCoordinatorFactor = tcf

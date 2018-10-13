@@ -26,7 +26,7 @@ class Heading(MicroServerComs):
         self.magnetic_variation = None
         self.flight_mode = Globals.FLIGHT_MODE_GROUND
         self.heading_confidence = 0.0
-        self.gps_magnetic_variation = None
+        self.gps_magnetic_variation = 0
         # Default 1 degree per minute
         self.confidence_multiplier = conf_mult
 

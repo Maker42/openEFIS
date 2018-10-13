@@ -13,6 +13,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
+import sys
+
 import yaml
 
 from PitchEstimate import PitchEstimate
@@ -49,7 +51,11 @@ def run_service(so):
 
 if __name__ == "__main__":
     if MicroServerComs._pubsub_config is None:
-        with open (CONFIG_FILE, 'r') as yml:
+        if len(sys.argv) > 1:
+            cfg_file = sys.argv[1]
+        else:
+            cfg_file = CONFIG_FILE
+        with open (cfg_file, 'r') as yml:
             MicroServerComs._pubsub_config = yaml.load(yml)
             yml.close()
     InternalPublisher.TheInternalPublisher = InternalPublisher.InternalPublisher(

@@ -21,7 +21,7 @@ import InternalPublisher
 _pubsub_config = None
 
 class MicroServerComs:
-    def __init__(self, function, input_mode='injection', channel=None, timeout=None):
+    def __init__(self, function, input_mode='injection', channel=None, timeout=None, config=None):
         global _pubsub_config
         self.pubchannel = None
         self.output_values = None
@@ -30,18 +30,21 @@ class MicroServerComs:
         self.has_internal_listeners = False
         self.has_external_listeners = False
         self.function = function
+        self.multi_receiver = False
         if channel is None:
             self.channel = self.function
         else:
             self.channel = channel
         self.input_mode = input_mode
-        if _pubsub_config is None:
-            with open (CONFIG_FILE, 'r') as yml:
-                _pubsub_config = yaml.load(yml)
-                yml.close()
-        if _pubsub_config is None:
-            raise RuntimeError ("MicroserverComs: pubsub config %s invalid"%CONFIG_FILE)
-        for chname,chcfg in _pubsub_config.items():
+        if config is None:
+            if _pubsub_config is None:
+                with open (CONFIG_FILE, 'r') as yml:
+                    _pubsub_config = yaml.load(yml)
+                    yml.close()
+            if _pubsub_config is None:
+                raise RuntimeError ("MicroserverComs: pubsub config %s invalid"%CONFIG_FILE)
+            config = _pubsub_config
+        for chname,chcfg in config.items():
             pubs_cfg = chcfg['pubs']
             #print ("pubs_cfg = %s"%str(pubs_cfg))
             subs_cfg = chcfg['subs']
@@ -71,6 +74,8 @@ class MicroServerComs:
                                 else:
                                     self.pubchannel = socket.socket(type=socket.SOCK_STREAM)
                                 self.pubchannel.connect ((addr,port))
+                if 'recv_multi' in chcfg:
+                    self.multi_receiver = True
             else:
                 if subs_cfg is not None:
                     for pipe in subs_cfg:
@@ -120,10 +125,17 @@ class MicroServerComs:
             if not (loop or got_data):
                 break
 
+    def inject(self, attr, val, addr):
+        if self.multi_receiver:
+            d = getattr(self, attr)
+            d[addr] = val
+        else:
+            setattr (self, attr, val)
+
     def data_ready(self, rfd):
         if rfd in self.subchannels:
             s,mychname,from_chname,input_values,input_format = self.subchannels[rfd]
-            data = s.recv(MAX_DATA_SIZE)
+            data,addr = s.recvfrom(MAX_DATA_SIZE)
             values_list = struct.unpack (input_format, data)
             if self.input_mode == 'injection':
                 timestamped = False
@@ -131,14 +143,17 @@ class MicroServerComs:
                 for vname,value in zip(input_values,values_list):
                     if vname == 'timestamp':
                         # Special timestamp handling
-                        setattr (self, ts_name, value)
+                        self.inject (ts_name, value, addr)
                         timestamped = True
                         self.last_update_time = value
                     else:
-                        setattr (self, vname, value)
+                        self.inject (vname, value, addr)
                 if not timestamped:
-                    setattr (self, ts_name, time.time())
-                self.updated (from_chname)
+                    self.inject (ts_name, time.time(), addr)
+                if self.multi_receiver:
+                    self.updated (from_chname, addr)
+                else:
+                    self.updated (from_chname)
             else:   # Input list mode
                 self.input (from_chname, input_values, values_list)
 
