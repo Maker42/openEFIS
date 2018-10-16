@@ -36,10 +36,10 @@ class Roll(MicroServerComs):
                 correction_factor = self.correction_rate * timediff
                 if self.roll_estimate is not None or \
                         (self.vertical is None or (not self.vertical)):
-                    self.roll += (-self.r_y * timediff +
+                    self.roll += (self.r_y * timediff +
                                 (self.roll_estimate - self.roll) * correction_factor)
                 else:
-                    self.roll += (-self.r_y * timediff)
+                    self.roll += (self.r_y * timediff)
                     self.roll_confidence = 5.0
                 if self.roll_estimate is not None or \
                         (self.vertical is None or (not self.vertical)):
