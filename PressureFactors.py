@@ -25,7 +25,7 @@ PRESSURE_DIVISOR=.0065
 PRESSURE_POWER=5.25588
 
 class PressureFactors(MicroServerComs):
-    def __init__(self):
+    def __init__(self, pressure_calibration):
         MicroServerComs.__init__(self, "PressureFactors")
         self.known_altitude = None
         self.given_barometer = None
@@ -34,6 +34,7 @@ class PressureFactors(MicroServerComs):
         self.temperature = None
         self.static_pressure = None
         self.standard_sea_level_temp = None
+        self.pressure_calibration = pressure_calibration
         # TODO: publish confidence level based on recency and relevance of inputs
 
     def updated(self, channel):
@@ -42,6 +43,11 @@ class PressureFactors(MicroServerComs):
                 self.standard_sea_level_temp = self.temperature + 1.98 * self.known_altitude / 1000.0
         elif channel == 'givenbarometer':
             self.sea_level_pressure = (self.given_barometer * KPA_INHG)
+
+        if self.static_pressure is not None:
+            if isinstance(self.pressure_calibration,dict):
+                self.static_pressure = util.rate_curve (self.static_pressure,
+                        self.pressure_calibration['pressure_calibration'])
 
         if self.known_altitude is not None and self.static_pressure is not None and \
                 self.temperature is not None:

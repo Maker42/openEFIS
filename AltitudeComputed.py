@@ -22,18 +22,22 @@ PRESSURE_DIVISOR=.0065
 PRESSURE_POWER=5.25588
 
 class AltitudeComputed(MicroServerComs):
-    def __init__(self):
+    def __init__(self, pressure_calibration):
         MicroServerComs.__init__(self, "AltitudeComputed")
         self.altitude_computed = None
         self.static_pressure = None
         self.sea_level_pressure = None
         self.temperature = None
+        self.pressure_calibration = pressure_calibration
         # TODO: publish confidence level based on recency and relevance of inputs
 
     def updated(self, channel):
         if channel == 'pressuresensors':
             self.timestamp = self.pressuresensors_updated
             if self.sea_level_pressure is not None and self.temperature is not None:
+                if isinstance(self.pressure_calibration,dict):
+                    self.static_pressure = util.rate_curve (self.static_pressure,
+                            self.pressure_calibration['pressure_calibration'])
                 self.altitude_computed = ((pow(
                     self.sea_level_pressure / self.static_pressure, 1/PRESSURE_POWER)-1) *
                         (self.temperature + KELVIN_OFFSET)) / PRESSURE_DIVISOR

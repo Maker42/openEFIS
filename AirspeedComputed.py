@@ -20,16 +20,14 @@ import Common.util as util
 from MicroServerComs import MicroServerComs
 
 class AirspeedComputed(MicroServerComs):
-    def __init__(self):
+    def __init__(self, airspeed_config):
         MicroServerComs.__init__(self, "AirspeedComputed")
         self.static_pressure = None
         self.pitot_pressure = None
         self.airspeed_computed = None
         self.ascurve = None
-        with open('airspeed_curve.yml', 'r') as acy:
-            self.ascurve = yaml.load(acy)
-            acy.close()
-        # TODO: publish confidence level based on recency and relevance of inputs
+        if isinstance(airspeed_config,dict):
+            self.ascurve = airspeed_config['airspeed_pressure_curve']
 
     def updated(self, channel):
         if self.ascurve is not None:

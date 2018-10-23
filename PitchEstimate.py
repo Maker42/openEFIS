@@ -19,11 +19,16 @@ import Common.util as util
 from MicroServerComs import MicroServerComs
 
 class PitchEstimate(MicroServerComs):
-    def __init__(self):
+    def __init__(self, accelerometer_calibration):
+        self.accelerometer_calibration = accelerometer_calibration
         MicroServerComs.__init__(self, "PitchEstimate")
 
     def updated(self, channel):
         if self.a_z != 0:
+            if isinstance(self.accelerometer_calibration, dict):
+                self.a_x = util.rate_curve (self.a_x, self.accelerometer_calibration['x'])
+                self.a_y = util.rate_curve (self.a_y, self.accelerometer_calibration['y'])
+                self.a_z = util.rate_curve (self.a_z, self.accelerometer_calibration['z'])
             self.pitch_estimate = math.atan(float(self.a_y) / float(self.a_z)) * util.DEG_RAD
             self.timestamp = self.accelerometers_updated
             self.publish ()

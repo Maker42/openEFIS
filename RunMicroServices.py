@@ -13,7 +13,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-import sys
+import sys, os
+import argparse
 
 import yaml
 
@@ -50,23 +51,53 @@ def run_service(so):
     so.listen()
 
 if __name__ == "__main__":
-    if MicroServerComs._pubsub_config is None:
-        if len(sys.argv) > 1:
-            cfg_file = sys.argv[1]
-        else:
-            cfg_file = CONFIG_FILE
-        with open (cfg_file, 'r') as yml:
-            MicroServerComs._pubsub_config = yaml.load(yml)
-            yml.close()
+    opt = argparse.ArgumentParser(description=
+            'Run the microservices necessary for a complete, self checking AHRS computation pipeline')
+    opt.add_argument('-p', '--pubsub-config', default=CONFIG_FILE,
+            help='YAML config file coms configuration')
+    opt.add_argument('-a', '--airspeed-config', default='airspeed_curve.yml',
+            help='YAML config file pressure differential->airspeed curve')
+    opt.add_argument('-m', '--heading-calibration', default='heading_calibration.yml',
+            help='YAML config file magnetic heading calibration curve')
+    opt.add_argument('-r', '--pressure-calibration', default='pressure_calibration.yml',
+            help='YAML config file altitude calibration curve')
+    opt.add_argument('-c', '--accelerometer-calibration', default='accelerometer_calibration.yml',
+            help='YAML config file accelerometer calibration curve')
+    args = opt.parse_args()
+
+    with open (args.pubsub_config, 'r') as yml:
+        MicroServerComs._pubsub_config = yaml.load(yml)
+        yml.close()
     InternalPublisher.TheInternalPublisher = InternalPublisher.InternalPublisher(
             MicroServerComs._pubsub_config)
+    airspeed_config = None
+    if os.path.exists(args.airspeed_config):
+        with open (args.airspeed_config, 'r') as yml:
+            airspeed_config = yaml.load(yml)
+            yml.close()
+    heading_calibration = None
+    if os.path.exists(args.heading_calibration):
+        with open (args.heading_calibration, 'r') as yml:
+            heading_calibration = yaml.load(yml)
+            yml.close()
+    pressure_calibration = None
+    if os.path.exists(args.pressure_calibration):
+        with open (args.pressure_calibration, 'r') as yml:
+            pressure_calibration = yaml.load(yml)
+            yml.close()
+    accelerometer_calibration = None
+    if os.path.exists(args.accelerometer_calibration):
+        with open (args.accelerometer_calibration, 'r') as yml:
+            accelerometer_calibration = yaml.load(yml)
+            yml.close()
+
     service_objects = [
-                 PitchEstimate()
-                ,GroundRoll()
+                 PitchEstimate(accelerometer_calibration)
+                ,GroundRoll(accelerometer_calibration)
                 ,RollEstimate()
                 ,RollRateEstimate()
                 ,TurnRateComputed()
-                ,HeadingComputed()
+                ,HeadingComputed(heading_calibration)
                 ,Pitch()
                 ,Roll()
                 ,Yaw()
@@ -74,10 +105,10 @@ if __name__ == "__main__":
                 ,RollRate()
                 ,HeadingTasEstimate()
                 ,WindEstimate()
-                ,PressureFactors()
-                ,AirspeedComputed()
+                ,PressureFactors(pressure_calibration)
+                ,AirspeedComputed(airspeed_config)
                 ,AirspeedEstimate()
-                ,AltitudeComputed()
+                ,AltitudeComputed(pressure_calibration)
                 ,TrackRate()
                 ,TurnRate()
                 ,Airspeed()
