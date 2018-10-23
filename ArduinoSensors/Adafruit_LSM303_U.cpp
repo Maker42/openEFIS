@@ -67,9 +67,8 @@ void Adafruit_LSM303_Accel_Unified::write8(byte address, byte reg, byte value)
     @brief  Abstract away platform differences in Arduino wire library
 */
 /**************************************************************************/
-byte Adafruit_LSM303_Accel_Unified::read8(byte address, byte reg)
+bool Adafruit_LSM303_Accel_Unified::read8(byte address, byte reg, byte *value)
 {
-  byte value;
 
   Wire.beginTransmission(address);
   #if ARDUINO >= 100
@@ -78,15 +77,16 @@ byte Adafruit_LSM303_Accel_Unified::read8(byte address, byte reg)
     Wire.send(reg);
   #endif
   Wire.endTransmission();
-  Wire.requestFrom(address, (byte)1);
+  if (!Wire.requestFrom(address, (byte)1) < 1)
+      return false;
   #if ARDUINO >= 100
-    value = Wire.read();
+    *value = Wire.read();
   #else
-    value = Wire.receive();
+    *value = Wire.receive();
   #endif  
   Wire.endTransmission();
 
-  return value;
+  return true;
 }
 
 /**************************************************************************/
@@ -94,7 +94,7 @@ byte Adafruit_LSM303_Accel_Unified::read8(byte address, byte reg)
     @brief  Reads the raw data from the sensor
 */
 /**************************************************************************/
-void Adafruit_LSM303_Accel_Unified::read()
+bool Adafruit_LSM303_Accel_Unified::read()
 {
   // Read the accelerometer
   Wire.beginTransmission((byte)LSM303_ADDRESS_ACCEL);
@@ -104,7 +104,8 @@ void Adafruit_LSM303_Accel_Unified::read()
     Wire.send(LSM303_REGISTER_ACCEL_OUT_X_L_A | 0x80);
   #endif
   Wire.endTransmission();
-  Wire.requestFrom((byte)LSM303_ADDRESS_ACCEL, (byte)6);
+  if (Wire.requestFrom((byte)LSM303_ADDRESS_ACCEL, (byte)6) < 6)
+      return false;
 
   // Wait around until enough data is available
   while (Wire.available() < 6);
@@ -129,6 +130,7 @@ void Adafruit_LSM303_Accel_Unified::read()
   _accelData.x = (int16_t)(xlo | (xhi << 8)) >> 4;
   _accelData.y = (int16_t)(ylo | (yhi << 8)) >> 4;
   _accelData.z = (int16_t)(zlo | (zhi << 8)) >> 4;
+  return true;
 }
 
 /***************************************************************************
@@ -163,8 +165,9 @@ bool Adafruit_LSM303_Accel_Unified::begin()
   
   // LSM303DLHC has no WHOAMI register so read CTRL_REG1_A back to check
   // if we are connected or not
-  uint8_t reg1_a = read8(LSM303_ADDRESS_ACCEL, LSM303_REGISTER_ACCEL_CTRL_REG1_A);
-  if (reg1_a != 0x57)
+  uint8_t reg1_a;
+  if ((!read8(LSM303_ADDRESS_ACCEL, LSM303_REGISTER_ACCEL_CTRL_REG1_A)) ||
+            (reg1_a != 0x57))
   {
     return false;
   }  
@@ -182,7 +185,8 @@ bool Adafruit_LSM303_Accel_Unified::getEvent(sensors_event_t *event) {
   memset(event, 0, sizeof(sensors_event_t));
   
   /* Read new data */
-  read();
+  if (!read())
+      return false;
 
   event->version   = sizeof(sensors_event_t);
   event->sensor_id = _sensorID;
@@ -246,9 +250,8 @@ void Adafruit_LSM303_Mag_Unified::write8(byte address, byte reg, byte value)
     @brief  Abstract away platform differences in Arduino wire library
 */
 /**************************************************************************/
-byte Adafruit_LSM303_Mag_Unified::read8(byte address, byte reg)
+bool Adafruit_LSM303_Mag_Unified::read8(byte address, byte reg, byte *value)
 {
-  byte value;
 
   Wire.beginTransmission(address);
   #if ARDUINO >= 100
@@ -257,15 +260,16 @@ byte Adafruit_LSM303_Mag_Unified::read8(byte address, byte reg)
     Wire.send(reg);
   #endif
   Wire.endTransmission();
-  Wire.requestFrom(address, (byte)1);
+  if (Wire.requestFrom(address, (byte)1) < 1)
+      return false;
   #if ARDUINO >= 100
-    value = Wire.read();
+    *value = Wire.read();
   #else
-    value = Wire.receive();
+    *value = Wire.receive();
   #endif  
   Wire.endTransmission();
 
-  return value;
+  return true;
 }
 
 /**************************************************************************/
@@ -273,7 +277,7 @@ byte Adafruit_LSM303_Mag_Unified::read8(byte address, byte reg)
     @brief  Reads the raw data from the sensor
 */
 /**************************************************************************/
-void Adafruit_LSM303_Mag_Unified::read()
+bool Adafruit_LSM303_Mag_Unified::read()
 {
   // Read the magnetometer
   Wire.beginTransmission((byte)LSM303_ADDRESS_MAG);
@@ -283,7 +287,8 @@ void Adafruit_LSM303_Mag_Unified::read()
     Wire.send(LSM303_REGISTER_MAG_OUT_X_H_M);
   #endif
   Wire.endTransmission();
-  Wire.requestFrom((byte)LSM303_ADDRESS_MAG, (byte)6);
+  if (Wire.requestFrom((byte)LSM303_ADDRESS_MAG, (byte)6) < 6)
+      return false;
   
   // Wait around until enough data is available
   while (Wire.available() < 6);
@@ -310,6 +315,7 @@ void Adafruit_LSM303_Mag_Unified::read()
   _magData.y = (int16_t)(ylo | ((int16_t)yhi << 8));
   _magData.z = (int16_t)(zlo | ((int16_t)zhi << 8));
   
+  return true;
   // ToDo: Calculate orientation
   // _magData.orientation = 0.0;
 }
@@ -347,8 +353,9 @@ bool Adafruit_LSM303_Mag_Unified::begin()
 
   // LSM303DLHC has no WHOAMI register so read CRA_REG_M to check
   // the default value (0b00010000/0x10)
-  uint8_t reg1_a = read8(LSM303_ADDRESS_MAG, LSM303_REGISTER_MAG_CRA_REG_M);
-  if (reg1_a != 0x10)
+  uint8_t reg1_a;
+  if ((!read8(LSM303_ADDRESS_MAG, LSM303_REGISTER_MAG_CRA_REG_M)) ||
+            (reg1_a != 0x10))
   {
     return false;
   }
@@ -439,13 +446,16 @@ bool Adafruit_LSM303_Mag_Unified::getEvent(sensors_event_t *event) {
   while(!readingValid)
   {
 
-    uint8_t reg_mg = read8(LSM303_ADDRESS_MAG, LSM303_REGISTER_MAG_SR_REG_Mg);
-    if (!(reg_mg & 0x1)) {
-			return false;
+    uint8_t reg_mg;
+    if ((!read8(LSM303_ADDRESS_MAG, LSM303_REGISTER_MAG_SR_REG_Mg, reg_mg)) ||
+                (!(reg_mg & 0x1)))
+    {
+        return false;
     }
   
     /* Read new data */
-    read();
+    if (!read())
+        return false;
     
     /* Make sure the sensor isn't saturating if auto-ranging is enabled */
     if (!_autoRangeEnabled)

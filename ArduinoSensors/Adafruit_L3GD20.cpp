@@ -50,9 +50,8 @@ bool Adafruit_L3GD20::begin(l3gd20Range_t rng, byte addr)
 
   /* Make sure we have the correct chip ID since this checks
      for correct address and that the IC is properly connected */
-  uint8_t id = read8(L3GD20_REGISTER_WHO_AM_I);
-  //Serial.println(id, HEX);
-  if ((id != L3GD20_ID) && (id != L3GD20H_ID))
+  uint8_t id;
+  if ((!read8(L3GD20_REGISTER_WHO_AM_I, &id)) || ((id != L3GD20_ID) && (id != L3GD20H_ID)))
   {
     return false;
   }
@@ -145,7 +144,7 @@ bool Adafruit_L3GD20::begin(l3gd20Range_t rng, byte addr)
 /***************************************************************************
  PUBLIC FUNCTIONS
  ***************************************************************************/
-void Adafruit_L3GD20::read()
+bool Adafruit_L3GD20::read()
 { 
   uint8_t xhi, xlo, ylo, yhi, zlo, zhi;
 
@@ -154,7 +153,8 @@ void Adafruit_L3GD20::read()
     // Make sure to set address auto-increment bit
     Wire.write(L3GD20_REGISTER_OUT_X_L | 0x80);
     Wire.endTransmission();
-    Wire.requestFrom(address, (byte)6);
+    if (Wire.requestFrom(address, (byte)6) < 6)
+        return false;
     
     // Wait around until enough data is available
     while (Wire.available() < 6);
@@ -205,6 +205,7 @@ void Adafruit_L3GD20::read()
       data.z *= L3GD20_SENSITIVITY_2000DPS;
       break;
   }
+  return true;
 }
 
 /***************************************************************************
@@ -229,29 +230,29 @@ void Adafruit_L3GD20::write8(l3gd20Registers_t reg, byte value)
   }
 }
 
-byte Adafruit_L3GD20::read8(l3gd20Registers_t reg)
+bool Adafruit_L3GD20::read8(l3gd20Registers_t reg, uint8_t *value)
 {
-  byte value;
 
   if (_cs == -1) {
     // use i2c
     Wire.beginTransmission(address);
     Wire.write((byte)reg);
     Wire.endTransmission();
-    Wire.requestFrom(address, (byte)1);
-    value = Wire.read();
+    if (Wire.requestFrom(address, (byte)1) < 1)
+        return false;
+    *value = Wire.read();
     Wire.endTransmission();
   } else {
     digitalWrite(_clk, HIGH);
     digitalWrite(_cs, LOW);
 
     SPIxfer((uint8_t)reg | 0x80); // set READ bit
-    value = SPIxfer(0xFF);
+    *value = SPIxfer(0xFF);
 
     digitalWrite(_cs, HIGH);
   }
 
-  return value;
+  return true;
 }
 
 uint8_t Adafruit_L3GD20::SPIxfer(uint8_t x) {

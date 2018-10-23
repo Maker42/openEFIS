@@ -89,6 +89,7 @@ void Onsetup_i2c_sensor()
   int32_t   period;
   float     pressure, temperature;
   sensors_event_t   event;
+  int       retry;
 
   chan = cmdMessenger.readInt16Arg();
   if ((chan >= NELEMENTS(channels)) || (chan < 0))
@@ -116,47 +117,102 @@ void Onsetup_i2c_sensor()
         case 'a':
           if (accSensorEnabled)
           {
-              accSensor.getEvent(&event);
-              channels[chan].state[0] = event.orientation.x;
-              channels[chan].state[1] = event.orientation.y;
-              channels[chan].state[2] = event.orientation.z;
-              function2chan[accel_function] = chan;
+              for (retry = 10; retry != 0; retry--)
+              {
+                  if (accSensor.getEvent(&event)) break;
+                  delayMicroseconds(500);
+                  accSensor.begin();
+              }
+              if (retry > 0)
+              {
+                  channels[chan].state[0] = event.orientation.x;
+                  channels[chan].state[1] = event.orientation.y;
+                  channels[chan].state[2] = event.orientation.z;
+                  function2chan[accel_function] = chan;
+              } else
+              {
+                cmdLog (99, "Failed to initialize acc");
+              }
           }
           break;
         case 'r':
           if (gyroSensorEnabled)
           {
-              gyroSensor.read();
-              channels[chan].state[0] = gyroSensor.data.x;
-              channels[chan].state[1] = gyroSensor.data.y;
-              channels[chan].state[2] = gyroSensor.data.z;
-              function2chan[rotation_function] = chan;
+              for (retry = 10; retry != 0; retry--)
+              {
+                  if (gyroSensor.read()) break;
+                  delayMicroseconds(500);
+                  gyroSensor.begin();
+              }
+              if (retry > 0)
+              {
+                  channels[chan].state[0] = gyroSensor.data.x;
+                  channels[chan].state[1] = gyroSensor.data.y;
+                  channels[chan].state[2] = gyroSensor.data.z;
+                  function2chan[rotation_function] = chan;
+              } else
+              {
+                cmdLog (99, "Failed to initialize gyro");
+              }
           }
           break;
         case 'm':
           if (magSensorEnabled)
           {
-              magSensor.getEvent(&event);
-              channels[chan].state[0] = event.magnetic.x;
-              channels[chan].state[1] = event.magnetic.y;
-              channels[chan].state[2] = event.magnetic.z;
-              function2chan[magnetic_function] = chan;
+              for (retry = 10; retry != 0; retry--)
+              {
+                  if (magSensor.getEvent(&event)) break;
+                  delayMicroseconds(500);
+                  magSensor.begin();
+              }
+              if (retry > 0)
+              {
+                  channels[chan].state[0] = event.magnetic.x;
+                  channels[chan].state[1] = event.magnetic.y;
+                  channels[chan].state[2] = event.magnetic.z;
+                  function2chan[magnetic_function] = chan;
+              } else
+              {
+                cmdLog (99, "Failed to initialize mag");
+              }
           }
           break;
         case 'p':
           if (bmpSensorEnabled)
           {
-              bmpSensor.getPressure(&pressure);
-              channels[chan].state[0] = pressure;
-              function2chan[pressure_function] = chan;
+              for (retry = 10; retry != 0; retry--)
+              {
+                  if (bmpSensor.getPressure(&pressure)) break;
+                  delayMicroseconds(500);
+                  bmpSensor.begin();
+              }
+              if (retry > 0)
+              {
+                  channels[chan].state[0] = pressure;
+                  function2chan[pressure_function] = chan;
+              } else
+              {
+                cmdLog (99, "Failed to initialize pressure");
+              }
           }
           break;
         case 't':
           if (bmpSensorEnabled)
           {
-              bmpSensor.getTemperature(&temperature);
-              channels[chan].state[0] = temperature;
-              function2chan[temp_function] = chan;
+              for (retry = 10; retry != 0; retry--)
+              {
+                  if (bmpSensor.getTemperature(&temperature)) break;
+                  delayMicroseconds(500);
+                  bmpSensor.begin();
+              }
+              if (retry > 0)
+              {
+                  channels[chan].state[0] = temperature;
+                  function2chan[temp_function] = chan;
+              } else
+              {
+                cmdLog (99, "Failed to initialize temp");
+              }
           }
           break;
         default:
@@ -409,7 +465,7 @@ void setup()
   gps_line[last_gps_line][0] = 0;
   gps_index = 0;
   Serial.begin(115200);
-  cmdLog (99, "Sensors Have Started");
+  cmdLog (99, "Sensors Starting...");
   bmpSensorEnabled = bmpSensor.begin();
   gyroSensorEnabled = gyroSensor.begin();
   accSensorEnabled = accSensor.begin();
@@ -423,6 +479,7 @@ void loop()
   float   pressure, temperature;
   sensors_event_t   event;
   pChannel          pch;
+  int               sensors_configured = 0;
   
   // put your main code here, to run repeatedly:
   cmdMessenger.feedinSerialData();
@@ -436,6 +493,8 @@ void loop()
   {
     channel = function2chan[pressure_function];
     pch = &(channels[channel]);
+    //cmdLog (99, "P");
+    sensors_configured++;
     bmpSensor.getPressure(&pressure);
     filter_channel (pch, 1, &pressure);
     timediff = (long)pch->next_time - (long)ms;
@@ -464,6 +523,8 @@ void loop()
   {
     channel = function2chan[temp_function];
     pch = &(channels[channel]);
+    //cmdLog (99, "T");
+    sensors_configured++;
     bmpSensor.getTemperature(&temperature);
     filter_channel (pch, 1, &temperature);
     timediff = (long)pch->next_time - (long)ms;
@@ -490,25 +551,29 @@ void loop()
   {
     channel = function2chan[rotation_function];
     pch = &(channels[channel]);
-    gyroSensor.read();
-    filter_channel (pch, 3, &(gyroSensor.data.x));
-    timediff = (long)pch->next_time - (long)ms;
-    if (timediff <= 0)
+    //cmdLog (99, "g");
+    sensors_configured++;
+    if (gyroSensor.read())
     {
-        cmdMessenger.sendCmdStart (sensor_reading);
-        cmdMessenger.sendCmdArg (channel);
-        cmdMessenger.sendCmdArg (pch->state[0]);
-        cmdMessenger.sendCmdArg (pch->state[1]);
-        cmdMessenger.sendCmdArg (pch->state[2]);
-        cmdMessenger.sendCmdArg (ms);
-        cmdMessenger.sendCmdArg (pch->sample_count);
-        cmdMessenger.sendCmdArg (pch->secondary_use_count);
-        cmdMessenger.sendCmdArg (pch->reject_count);
-        cmdMessenger.sendCmdEnd ();
-        pch->next_time += pch->period;
-        pch->sample_count = 0;
-        pch->reject_count = 0;
-        pch->secondary_use_count = 0;
+        filter_channel (pch, 3, &(gyroSensor.data.x));
+        timediff = (long)pch->next_time - (long)ms;
+        if (timediff <= 0)
+        {
+            cmdMessenger.sendCmdStart (sensor_reading);
+            cmdMessenger.sendCmdArg (channel);
+            cmdMessenger.sendCmdArg (pch->state[0]);
+            cmdMessenger.sendCmdArg (pch->state[1]);
+            cmdMessenger.sendCmdArg (pch->state[2]);
+            cmdMessenger.sendCmdArg (ms);
+            cmdMessenger.sendCmdArg (pch->sample_count);
+            cmdMessenger.sendCmdArg (pch->secondary_use_count);
+            cmdMessenger.sendCmdArg (pch->reject_count);
+            cmdMessenger.sendCmdEnd ();
+            pch->next_time += pch->period;
+            pch->sample_count = 0;
+            pch->reject_count = 0;
+            pch->secondary_use_count = 0;
+        }
     }
   }
 
@@ -519,25 +584,29 @@ void loop()
   {
     channel = function2chan[accel_function];
     pch = &(channels[channel]);
-    accSensor.getEvent(&event);
-    filter_channel (pch, 3, event.orientation.v);
-    timediff = (long)pch->next_time - (long)ms;
-    if (timediff <= 0)
+    //cmdLog (99, "A");
+    sensors_configured++;
+    if (accSensor.getEvent(&event))
     {
-        cmdMessenger.sendCmdStart (sensor_reading);
-        cmdMessenger.sendCmdArg (channel);
-        cmdMessenger.sendCmdArg (pch->state[0]);
-        cmdMessenger.sendCmdArg (pch->state[1]);
-        cmdMessenger.sendCmdArg (pch->state[2]);
-        cmdMessenger.sendCmdArg (event.timestamp);
-        cmdMessenger.sendCmdArg (pch->sample_count);
-        cmdMessenger.sendCmdArg (pch->secondary_use_count);
-        cmdMessenger.sendCmdArg (pch->reject_count);
-        cmdMessenger.sendCmdEnd ();
-        pch->next_time += pch->period;
-        pch->sample_count = 0;
-        pch->reject_count = 0;
-        pch->secondary_use_count = 0;
+        filter_channel (pch, 3, event.orientation.v);
+        timediff = (long)pch->next_time - (long)ms;
+        if (timediff <= 0)
+        {
+            cmdMessenger.sendCmdStart (sensor_reading);
+            cmdMessenger.sendCmdArg (channel);
+            cmdMessenger.sendCmdArg (pch->state[0]);
+            cmdMessenger.sendCmdArg (pch->state[1]);
+            cmdMessenger.sendCmdArg (pch->state[2]);
+            cmdMessenger.sendCmdArg (event.timestamp);
+            cmdMessenger.sendCmdArg (pch->sample_count);
+            cmdMessenger.sendCmdArg (pch->secondary_use_count);
+            cmdMessenger.sendCmdArg (pch->reject_count);
+            cmdMessenger.sendCmdEnd ();
+            pch->next_time += pch->period;
+            pch->sample_count = 0;
+            pch->reject_count = 0;
+            pch->secondary_use_count = 0;
+        }
     }
   }
 
@@ -548,25 +617,32 @@ void loop()
   {
     channel = function2chan[magnetic_function];
     pch = &(channels[channel]);
-    magSensor.getEvent(&event);
-    filter_channel (pch, 3, event.magnetic.v);
-    timediff = (long)pch->next_time - (long)ms;
-    if (timediff <= 0)
+    //cmdLog (99, "M");
+    sensors_configured++;
+    if (magSensor.getEvent(&event))
     {
-        cmdMessenger.sendCmdStart (sensor_reading);
-        cmdMessenger.sendCmdArg (channel);
-        cmdMessenger.sendCmdArg (event.magnetic.x);
-        cmdMessenger.sendCmdArg (event.magnetic.y);
-        cmdMessenger.sendCmdArg (event.magnetic.z);
-        cmdMessenger.sendCmdArg (event.timestamp);
-        cmdMessenger.sendCmdArg (pch->sample_count);
-        cmdMessenger.sendCmdArg (pch->secondary_use_count);
-        cmdMessenger.sendCmdArg (pch->reject_count);
-        cmdMessenger.sendCmdEnd ();
-        pch->next_time += pch->period;
-        pch->sample_count = 0;
-        pch->reject_count = 0;
-        pch->secondary_use_count = 0;
+        filter_channel (pch, 3, event.magnetic.v);
+        timediff = (long)pch->next_time - (long)ms;
+        if (timediff <= 0)
+        {
+            cmdMessenger.sendCmdStart (sensor_reading);
+            cmdMessenger.sendCmdArg (channel);
+            cmdMessenger.sendCmdArg (event.magnetic.x);
+            cmdMessenger.sendCmdArg (event.magnetic.y);
+            cmdMessenger.sendCmdArg (event.magnetic.z);
+            cmdMessenger.sendCmdArg (event.timestamp);
+            cmdMessenger.sendCmdArg (pch->sample_count);
+            cmdMessenger.sendCmdArg (pch->secondary_use_count);
+            cmdMessenger.sendCmdArg (pch->reject_count);
+            cmdMessenger.sendCmdEnd ();
+            pch->next_time += pch->period;
+            pch->sample_count = 0;
+            pch->reject_count = 0;
+            pch->secondary_use_count = 0;
+        }
+    } else
+    {
+        magSensor.begin();
     }
   }
 
@@ -597,4 +673,5 @@ void loop()
         }
     }
   }
+  //if (sensors_configured >= 5) cmdLog (99, "L");
 }

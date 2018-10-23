@@ -85,13 +85,13 @@ class Adafruit_L3GD20
     Adafruit_L3GD20(void);
 
     bool begin(l3gd20Range_t rng=L3DS20_RANGE_250DPS, byte addr=L3GD20_ADDRESS);
-    void read(void);
+    bool read(void);
 
     l3gd20Data data;    // Last read will be available here
 
   private:
     void write8(l3gd20Registers_t reg, byte value);
-    byte read8(l3gd20Registers_t reg);
+    bool read8(l3gd20Registers_t reg, uint8_t *value);
     uint8_t SPIxfer(uint8_t x);
     byte address;
     l3gd20Range_t range;
