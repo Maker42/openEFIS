@@ -16,6 +16,8 @@
 import time
 import argparse
 
+import yaml
+
 from SenseControl import Sensors
 
 if __name__ == "__main__":
@@ -25,9 +27,13 @@ if __name__ == "__main__":
     opt.add_argument('-b', '--barometer', default=None, type=float, help='The given barometric pressure in inches of mercury')
     opt.add_argument('-s', '--wind-speed', default=None, type=int, help='The current wind speed in knots')
     opt.add_argument('--wind-heading', default=None, type=int, help='The current wind heading in degrees')
+    opt.add_argument('-p', '--pubsub-config', default='sensors_pubsub.yml', help='YAML config file coms configuration')
     args = opt.parse_args()
 
-    s = Sensors()
+    with open (args.pubsub_config, 'r') as yml:
+        pubsub_config = yaml.load(yml)
+        yml.close()
+    s = Sensors(pubsub_config)
     s.initialize (args.altitude, args.barometer, (args.wind_heading, args.wind_speed))
     s.WaitSensorsGreen()
 

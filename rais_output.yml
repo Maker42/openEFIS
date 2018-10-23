@@ -1,0 +1,159 @@
+
+#
+# Best guess computations
+#
+
+Yaw:
+    output_values:
+        - timestamp
+        - yaw
+        - yaw_confidence
+    format: dff
+    pubs:
+      - {addr: localhost, port: 48510, protocol: udp, function: Yaw}
+    subs:
+      - {addr: localhost, port: 48511, protocol: udp, function: Display}
+      - {addr: localhost, port: 48512, protocol: udp, function: Autopilot}
+      - {addr: localhost, port: 48513, protocol: udp, function: EventDB}
+
+Pitch:
+    output_values:
+        - timestamp
+        - pitch
+        - pitch_confidence
+    format: dff
+    pubs:
+      - {addr: localhost, port: 48520, protocol: udp, function: Pitch}
+    subs:
+      - {addr: localhost, port: 48521, protocol: udp, function: Display}
+      - {addr: localhost, port: 48522, protocol: udp, function: Autopilot}
+      - {addr: localhost, port: 48523, protocol: udp, function: EventDB}
+
+
+Roll:
+    output_values:
+        - timestamp
+        - roll
+        - roll_confidence
+    format: dff
+    pubs:
+      - {addr: localhost, port: 48530, protocol: udp, function: Roll}
+    subs:
+      - {addr: localhost, port: 48531, protocol: udp, function: Display}
+      - {addr: localhost, port: 48532, protocol: udp, function: Autopilot}
+      - {addr: localhost, port: 48533, protocol: udp, function: EventDB}
+
+Heading:
+    output_values:
+        - timestamp
+        - heading
+        - gps_magnetic_variation
+        - heading_confidence
+    format: diff
+    pubs:
+      - {addr: localhost, port: 48540, protocol: udp, function: Heading}
+    subs:
+      - {addr: localhost, port: 48541, protocol: udp, function: Display}
+      - {addr: localhost, port: 48542, protocol: udp, function: Autopilot}
+      - {addr: localhost, port: 48543, protocol: udp, function: EventDB}
+
+TurnRate:
+    output_values:
+        - timestamp
+        - turn_rate
+        - turn_rate_confidence
+    format: dff
+    pubs:
+      - {addr: localhost, port: 48550, protocol: udp, function: TurnRate}
+    subs:
+      - {addr: localhost, port: 48551, protocol: udp, function: Display}
+      - {addr: localhost, port: 48552, protocol: udp, function: Autopilot}
+      - {addr: localhost, port: 48553, protocol: udp, function: EventDB}
+
+RollRate:
+    output_values:
+        - timestamp
+        - roll_rate
+        - roll_rate_confidence
+    format: dff
+    pubs:
+      - {addr: localhost, port: 48560, protocol: udp, function: RollRate}
+    subs:
+      - {addr: localhost, port: 48561, protocol: udp, function: Display}
+      - {addr: localhost, port: 48562, protocol: udp, function: Autopilot}
+      - {addr: localhost, port: 48563, protocol: udp, function: EventDB}
+
+Airspeed:
+    output_values:
+        - timestamp
+        - airspeed_is_estimated
+        - airspeed
+        - airspeed_confidence
+    format: diif
+    pubs:
+      - {addr: localhost, port: 48570, protocol: udp, function: Airspeed}
+    subs:
+      - {addr: localhost, port: 48571, protocol: udp, function: Display}
+      - {addr: localhost, port: 48572, protocol: udp, function: Autopilot}
+      - {addr: localhost, port: 48573, protocol: udp, function: EventDB}
+
+ClimbRate:
+    output_values:
+        - timestamp
+        - climb_rate
+        - climb_rate_confidence
+    format: dif
+    pubs:
+      - {addr: localhost, port: 48580, protocol: udp, function: ClimbRate}
+    subs:
+      - {addr: localhost, port: 48581, protocol: udp, function: Display}
+      - {addr: localhost, port: 48582, protocol: udp, function: Autopilot}
+      - {addr: localhost, port: 48583, protocol: udp, function: EventDB}
+
+Altitude:
+    output_values:
+        - timestamp
+        - altitude
+        - altitude_confidence
+    format: dif
+    pubs:
+      - {addr: localhost, port: 48590, protocol: udp, function: Altitude}
+    subs:
+      - {addr: localhost, port: 48591, protocol: udp, function: Display}
+      - {addr: localhost, port: 48592, protocol: udp, function: Autopilot}
+      - {addr: localhost, port: 48593, protocol: udp, function: EventDB}
+
+GroundVector:
+    output_values:
+        - gps_utc
+        - gps_lat
+        - gps_lng
+        - gps_ground_speed
+        - gps_ground_track
+        - ground_vector_confidence
+    format: dddiif
+    pubs:
+      - {addr: localhost, port: 48600, protocol: udp, function: GroundVector}
+    subs:
+      - {addr: localhost, port: 48601, protocol: udp, function: Display}
+      - {addr: localhost, port: 48602, protocol: udp, function: Autopilot}
+      - {addr: localhost, port: 48603, protocol: udp, function: EventDB}
+
+PitchRate:
+    output_values:
+        - timestamp
+        - pitch_rate
+        - pitch_rate_confidence
+    format: dff
+    pubs:
+      - {addr: localhost, port: 48610, protocol: udp, function: PitchRate}
+    subs:
+      - {addr: localhost, port: 48611, protocol: udp, function: Display}
+      - {addr: localhost, port: 48612, protocol: udp, function: Autopilot}
+      - {addr: localhost, port: 48613, protocol: udp, function: EventDB}
+
+Autopilot:
+    output_values:
+    format:
+    pubs:
+    subs:

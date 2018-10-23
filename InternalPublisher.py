@@ -85,6 +85,6 @@ class InternalPublisher:
                 else:
                     raise RuntimeError ("Unknown exception from unknown file descriptor %d"%errfd)
             for rfd in r:
-                s,to_chname,from_chname,input_values,input_format = self.external_subscriptions[rfd]
+                s,to_chname,from_chname,input_values,input_format,index_cfg = self.external_subscriptions[rfd]
                 tobj = self.channels[to_chname]
                 tobj.data_ready(rfd)

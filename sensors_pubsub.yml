@@ -286,6 +286,7 @@ PressureFactors:
 # Best guess computations
 #
 
+
 Yaw:
     output_values:
         - timestamp
@@ -295,9 +296,7 @@ Yaw:
     pubs:
       - {addr: localhost, port: 48010, protocol: udp, function: Yaw}
     subs:
-      - {addr: localhost, port: 48011, protocol: udp, function: Display}
-      - {addr: localhost, port: 48012, protocol: udp, function: Autopilot}
-      - {addr: localhost, port: 48013, protocol: udp, function: EventDB}
+      - {addr: localhost, port: 48011, protocol: udp, function: RAISDiscriminator}
 
 Pitch:
     output_values:
@@ -308,9 +307,7 @@ Pitch:
     pubs:
       - {addr: localhost, port: 48020, protocol: udp, function: Pitch}
     subs:
-      - {addr: localhost, port: 48021, protocol: udp, function: Display}
-      - {addr: localhost, port: 48022, protocol: udp, function: Autopilot}
-      - {addr: localhost, port: 48023, protocol: udp, function: EventDB}
+      - {addr: localhost, port: 48021, protocol: udp, function: RAISDiscriminator}
 
 
 Roll:
@@ -322,9 +319,7 @@ Roll:
     pubs:
       - {addr: localhost, port: 48030, protocol: udp, function: Roll}
     subs:
-      - {addr: localhost, port: 48031, protocol: udp, function: Display}
-      - {addr: localhost, port: 48032, protocol: udp, function: Autopilot}
-      - {addr: localhost, port: 48033, protocol: udp, function: EventDB}
+      - {addr: localhost, port: 48031, protocol: udp, function: RAISDiscriminator}
 
 Heading:
     output_values:
@@ -336,9 +331,7 @@ Heading:
     pubs:
       - {addr: localhost, port: 48040, protocol: udp, function: Heading}
     subs:
-      - {addr: localhost, port: 48041, protocol: udp, function: Display}
-      - {addr: localhost, port: 48042, protocol: udp, function: Autopilot}
-      - {addr: localhost, port: 48043, protocol: udp, function: EventDB}
+      - {addr: localhost, port: 48041, protocol: udp, function: RAISDiscriminator}
       - {protocol: internal, function: WindEstimate}
 
 TurnRate:
@@ -350,9 +343,7 @@ TurnRate:
     pubs:
       - {addr: localhost, port: 48050, protocol: udp, function: TurnRate}
     subs:
-      - {addr: localhost, port: 48051, protocol: udp, function: Display}
-      - {addr: localhost, port: 48052, protocol: udp, function: Autopilot}
-      - {addr: localhost, port: 48053, protocol: udp, function: EventDB}
+      - {addr: localhost, port: 48051, protocol: udp, function: RAISDiscriminator}
 
 RollRate:
     output_values:
@@ -363,9 +354,7 @@ RollRate:
     pubs:
       - {addr: localhost, port: 48060, protocol: udp, function: RollRate}
     subs:
-      - {addr: localhost, port: 48061, protocol: udp, function: Display}
-      - {addr: localhost, port: 48062, protocol: udp, function: Autopilot}
-      - {addr: localhost, port: 48063, protocol: udp, function: EventDB}
+      - {addr: localhost, port: 48061, protocol: udp, function: RAISDiscriminator}
 
 Airspeed:
     output_values:
@@ -377,9 +366,7 @@ Airspeed:
     pubs:
       - {addr: localhost, port: 48070, protocol: udp, function: Airspeed}
     subs:
-      - {addr: localhost, port: 48071, protocol: udp, function: Display}
-      - {addr: localhost, port: 48072, protocol: udp, function: Autopilot}
-      - {addr: localhost, port: 48073, protocol: udp, function: EventDB}
+      - {addr: localhost, port: 48071, protocol: udp, function: RAISDiscriminator}
       - {protocol: internal, function: WindEstimate}
 
 ClimbRate:
@@ -391,9 +378,7 @@ ClimbRate:
     pubs:
       - {addr: localhost, port: 48080, protocol: udp, function: ClimbRate}
     subs:
-      - {addr: localhost, port: 48081, protocol: udp, function: Display}
-      - {addr: localhost, port: 48082, protocol: udp, function: Autopilot}
-      - {addr: localhost, port: 48083, protocol: udp, function: EventDB}
+      - {addr: localhost, port: 48081, protocol: udp, function: RAISDiscriminator}
 
 Altitude:
     output_values:
@@ -404,9 +389,7 @@ Altitude:
     pubs:
       - {addr: localhost, port: 48090, protocol: udp, function: Altitude}
     subs:
-      - {addr: localhost, port: 48091, protocol: udp, function: Display}
-      - {addr: localhost, port: 48092, protocol: udp, function: Autopilot}
-      - {addr: localhost, port: 48093, protocol: udp, function: EventDB}
+      - {addr: localhost, port: 48091, protocol: udp, function: RAISDiscriminator}
 
 GroundVector:
     output_values:
@@ -420,9 +403,7 @@ GroundVector:
     pubs:
       - {addr: localhost, port: 48100, protocol: udp, function: GroundVector}
     subs:
-      - {addr: localhost, port: 48101, protocol: udp, function: Display}
-      - {addr: localhost, port: 48102, protocol: udp, function: Autopilot}
-      - {addr: localhost, port: 48103, protocol: udp, function: EventDB}
+      - {addr: localhost, port: 48101, protocol: udp, function: RAISDiscriminator}
       - {protocol: internal, function: WindEstimate}
 
 PitchRate:
@@ -434,15 +415,8 @@ PitchRate:
     pubs:
       - {addr: localhost, port: 48110, protocol: udp, function: PitchRate}
     subs:
-      - {addr: localhost, port: 48111, protocol: udp, function: Display}
-      - {addr: localhost, port: 48112, protocol: udp, function: Autopilot}
-      - {addr: localhost, port: 48113, protocol: udp, function: EventDB}
+      - {addr: localhost, port: 48111, protocol: udp, function: RAISDiscriminator}
 
-Autopilot:
-    output_values:
-    format:
-    pubs:
-    subs:
 
 Control:
     output_values:

@@ -55,18 +55,18 @@ arduino_messages = [
 ]
 
 class SenseControlSlave(MicroServerComs):
-    def __init__(self, command_channel, config):
+    def __init__(self, command_channel, config, pubsub_cfg):
         self._mainCmd = command_channel
         self._config = config
         self._sensors = dict()
         sensor_chnum = 0
-        self._accelerometers = Accelerometers()
-        self._rotation = Rotation()
-        self._magnetic = Magnetic()
-        self._pressure = Pressure()
-        self._temperature = Temperature()
+        self._accelerometers = Accelerometers(pubsub_cfg)
+        self._rotation = Rotation(pubsub_cfg)
+        self._magnetic = Magnetic(pubsub_cfg)
+        self._pressure = Pressure(pubsub_cfg)
+        self._temperature = Temperature(pubsub_cfg)
+        self._gps = GPS(pubsub_cfg)
         self._calibrations = dict()
-        self._gps = GPS()
         for config_term,cfg in self._config.items():
             if config_term.startswith ('cal'):
                 self._calibrations.update (cfg)
@@ -91,7 +91,7 @@ class SenseControlSlave(MicroServerComs):
                         self.ProcessResponse(r)
                 self._sensors[sensor_chnum] = function
                 sensor_chnum += 1
-        MicroServerComs.__init__(self, "ControlSlave")
+        MicroServerComs.__init__(self, "ControlSlave", config=pubsub_cfg)
 
     def update(self, channel):
         if channel == "Control":
@@ -140,30 +140,18 @@ class SenseControlSlave(MicroServerComs):
         g: gps. output format NMEA string
         """
         if function == 'a':
-            self._accelerometers.send (args,
-                    self._calibrations['accelerometers']
-                    if 'accelerometers' in self._calibrations
-                    else None)
+            self._accelerometers.send (args, self._calibrations.get('accelerometers'))
         elif function == 'r':
-            self._rotation.send (args,
-                    self._calibrations['rotation']
-                    if 'rotation' in self._calibrations
-                    else None)
+            self._rotation.send (args,self._calibrations.get('rotation'))
         elif function == 'm':
-            self._magnetic.send (args,
-                    self._calibrations['magnetic']
-                    if 'magnetic' in self._calibrations
-                    else None)
+            cal = self._calibrations.get('magnetic')
+            if cal is not None:
+                cal.append(self._rotation)
+            self._magnetic.send (args, cal)
         elif function == 'p':
-            self._pressure.send (args,
-                    self._calibrations['pressure']
-                    if 'pressure' in self._calibrations
-                    else None)
+            self._pressure.send (args, self._calibrations.get('pressure'))
         elif function == 't':
-            self._temperature.send (args,
-                    self._calibrations['temperature']
-                    if 'temperature' in self._calibrations
-                    else None)
+            self._temperature.send (args, self._calibrations.get('temperature'))
         elif function == 'g':
             self._gps.send (args)
         elif function == 'd':
@@ -207,12 +195,12 @@ class SampleCounter():
             self.reject_count = 0
 
 class Accelerometers(MicroServerComs,SampleCounter):
-    def __init__(self):
+    def __init__(self, pubsub_cfg):
         self.a_x = None
         self.a_y = None
         self.a_z = None
         self.timestamp = None
-        MicroServerComs.__init__(self, "RawAccelerometers", channel='accelerometers')
+        MicroServerComs.__init__(self, "RawAccelerometers", channel='accelerometers', config=pubsub_cfg)
         SampleCounter.__init__(self)
 
     def send(self, args, calibration):
@@ -223,15 +211,16 @@ class Accelerometers(MicroServerComs,SampleCounter):
         self.publish()
 
 class Rotation(MicroServerComs,SampleCounter):
-    def __init__(self):
+    def __init__(self, pubsub_cfg):
         self.r_x = None
         self.r_y = None
         self.r_z = None
         self.cal_collection_count = 0
-        self.local_calibration = [0.0, 0.0, 0.0]
+        self.current_bias = [0.0, 0.0, 0.0]
+        self.samples = [list(), list(), list()]
         self.timestamp = None
         self.print_count = 0
-        MicroServerComs.__init__(self, "RawRotationSensors", channel='rotationsensors')
+        MicroServerComs.__init__(self, "RawRotationSensors", channel='rotationsensors', config=pubsub_cfg)
         SampleCounter.__init__(self)
 
     def send(self, args, calibration):
@@ -240,54 +229,94 @@ class Rotation(MicroServerComs,SampleCounter):
         if calibration:
             if isinstance (calibration[0],str) and calibration[0] == 'collect':
                 if self.cal_collection_count < calibration [1]:
-                    self.local_calibration [0] += self.r_x
-                    self.local_calibration [1] += self.r_y
-                    self.local_calibration [2] += self.r_z
+                    self.current_bias [0] += self.r_x
+                    self.current_bias [1] += self.r_y
+                    self.current_bias [2] += self.r_z
                     self.cal_collection_count += 1
                     if self.cal_collection_count == calibration [1]:
-                        self.local_calibration [0] /= self.cal_collection_count
-                        self.local_calibration [1] /= self.cal_collection_count
-                        self.local_calibration [2] /= self.cal_collection_count
-                    c_x = self.local_calibration [0] / self.cal_collection_count
-                    c_y = self.local_calibration [1] / self.cal_collection_count
-                    c_z = self.local_calibration [2] / self.cal_collection_count
+                        self.current_bias [0] /= self.cal_collection_count
+                        self.current_bias [1] /= self.cal_collection_count
+                        self.current_bias [2] /= self.cal_collection_count
+                    c_x = self.current_bias [0] / self.cal_collection_count
+                    c_y = self.current_bias [1] / self.cal_collection_count
+                    c_z = self.current_bias [2] / self.cal_collection_count
                 else:
-                    c_x, c_y, c_z = self.local_calibration
+                    c_x, c_y, c_z = self.current_bias
             else:
                 c_x, c_y, c_z = calibration
+            if len(calibration) >= 3 and calibration[2] == 'respond_heading':
+                self.samples[0].append (self.r_x)
+                self.samples[1].append (self.r_y)
+                self.samples[2].append (self.r_z)
             self.r_x -= c_x
             self.r_y -= c_y
             self.r_z -= c_z
+
         self.timestamp = make_timestamp (ts)
         self.print_count += 1
         if self.print_count % 10 == 0:
             print ("rotation %g,%g,%g"%(self.r_x, self.r_y, self.r_z))
         self.publish()
 
+    def reset_bias(self):
+        mean = [sum(x) for x in self.samples]
+        self.current_bias = [x/len(self.samples[0]) for x in mean]
+        print ("New rotation bias %s"%(str(self.current_bias)))
+
+    def reset_samples(self):
+        self.samples = [list(), list(), list()]
+
 class Magnetic(MicroServerComs,SampleCounter):
-    def __init__(self):
+    def __init__(self, pubsub_cfg):
         self.m_x = None
         self.m_y = None
         self.m_z = None
+        self.samples = [list(), list(), list()]
         self.timestamp = None
-        MicroServerComs.__init__(self, "RawMagneticSensors", channel='magneticsensors')
+        MicroServerComs.__init__(self, "RawMagneticSensors", channel='magneticsensors', config=pubsub_cfg)
         SampleCounter.__init__(self)
 
     def send(self, args, calibration):
         self.m_x, self.m_y, self.m_z, ts, self.sample_count, secondary, rj = args
         self.update_counts(secondary, rj)
+        if calibration is not None and isinstance (calibration[0],str) and calibration[0] == 'rotation':
+            if len(calibration) >= 5:
+                sample_count,max_sample_dev,max_trend_dev,rot_object = calibration[1:5]
+                self.samples[0].append (self.m_x)
+                self.samples[1].append (self.m_y)
+                self.samples[2].append (self.m_z)
+                if len(self.samples[0]) >= sample_count:
+                    mean = [sum(x)/len(self.samples[0]) for x in self.samples]
+                    deviation = [[abs(x-m) for x in samp] for samp,m in zip(self.samples,mean)]
+                    deviation = [max(x) for x in deviation]
+                    deviation = max(deviation)
+                    end_mean = [sum(x[-3:])/3 for x in self.samples]
+                    beg_mean = [sum(x[:3])/3 for x in self.samples]
+                    trend = [abs(e-b) for e,b in zip(end_mean,beg_mean)]
+                    max_trend = max(trend)
+                    if deviation < max_sample_dev and max_trend < max_trend_dev:
+                        rot_object.reset_bias()
+                        print ("reset rotation bias because %.4g<%.4g and %.4g<%.4g"%(
+                                    deviation, max_sample_dev,
+                                    max_trend, max_trend_dev))
+                    else:
+                        print ("DO NOT reset rotation bias because %.4g>=%.4g or %.4g>=%.4g"%(
+                                    deviation, max_sample_dev,
+                                    max_trend, max_trend_dev))
+                    self.samples = [list(), list(), list()]
+                    rot_object.reset_samples()
         self.timestamp = make_timestamp (ts)
         #print ("magnetic %g,%g,%g"%(self.m_x, self.m_y, self.m_z))
         self.publish()
 
 class Pressure(MicroServerComs,SampleCounter):
-    def __init__(self):
+    def __init__(self, pubsub_cfg):
         self.static_pressure = None
         self.pitot_pressure = None
         self.timestamp = None
         self.sc_min = 9999999
         self.sc_max = 0
-        MicroServerComs.__init__(self, "RawPressureSensors", channel='pressuresensors')
+        MicroServerComs.__init__(self, "RawPressureSensors", channel='pressuresensors', config=pubsub_cfg)
         SampleCounter.__init__(self, 10)
 
     def send(self, args, calibration):
@@ -300,9 +329,9 @@ class Pressure(MicroServerComs,SampleCounter):
         self.publish()
 
 class Temperature(MicroServerComs,SampleCounter):
-    def __init__(self):
+    def __init__(self, pubsub_cfg):
         self.temperature = None
-        MicroServerComs.__init__(self, "RawTemperatureSensors", channel='temperaturesensors')
+        MicroServerComs.__init__(self, "RawTemperatureSensors", channel='temperaturesensors', config=pubsub_cfg)
         SampleCounter.__init__(self, 10)
 
     def send(self, args, calibration):
@@ -312,7 +341,7 @@ class Temperature(MicroServerComs,SampleCounter):
         self.publish()
 
 class GPS(MicroServerComs):
-    def __init__(self):
+    def __init__(self, pubsub_cfg):
         self.gps_utc = None
         self.gps_lat = None
         self.gps_lng = None
@@ -322,7 +351,7 @@ class GPS(MicroServerComs):
         self.gps_signal_quality = None
         self.gps_magnetic_variation = None
         self.HaveNewPosition = False
-        MicroServerComs.__init__(self, "GPSFeed", channel='gpsfeed')
+        MicroServerComs.__init__(self, "GPSFeed", channel='gpsfeed', config=pubsub_cfg)
 
     def send(self, args):
         nmea_string,ts = args
@@ -358,8 +387,9 @@ def make_timestamp (board_ts):
 if '__main__' == __name__:
     opt = argparse.ArgumentParser(description='Control/sensor slave process')
     opt.add_argument('serial_port', help = 'Serial port path of physical controller')
-    opt.add_argument('--config-file', default='sensors.yml', help='YAML config file for sensor / control board')
-    opt.add_argument('-p', '--log-prefix', default=None, help = 'Over-ride logging prefix')
+    opt.add_argument('-c', '--config-file', default='sensors.yml', help='YAML config file for sensor / control board')
+    opt.add_argument('-p', '--pubsub-config', default='sensors_pubsub.yml', help='YAML config file coms configuration')
+    opt.add_argument('--log-prefix', default=None, help = 'Over-ride logging prefix')
     opt.add_argument('-l', '--log-level', type=int, default=logging.WARNING, help = '1 = Maximum Logging. 100 = Absolute Silence. 40 = Errors only. 10 = Basic Debug')
     opt.add_argument('-v', '--magnetic-variation', default=None, help='The magnetic variation(declination) of the current position')
     opt.add_argument('-a', '--altitude', default=None, help='The currently known altitude')
@@ -409,7 +439,10 @@ if '__main__' == __name__:
     with open(args.config_file, 'r') as yml:
         config = yaml.load (yml)
         yml.close()
-    slave = SenseControlSlave(command_channel, config)
+    with open (args.pubsub_config, 'r') as yml:
+        pubsub_config = yaml.load(yml)
+        yml.close()
+    slave = SenseControlSlave(command_channel, config, pubsub_config)
     while True:
         slave.ReadSensors()
         slave.listen (timeout=0, loop=False)

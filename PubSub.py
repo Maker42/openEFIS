@@ -13,7 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-import socket, select
+import socket, select, sys
 import threading
 
 import yaml
@@ -38,7 +38,10 @@ def run_channel (*args, **kwargs):
             if protocol == 'udp':
                 port = pipe['port']
                 usock = socket.socket (type=socket.SOCK_DGRAM)
-                usock.bind(('',port))
+                try:
+                    usock.bind(('',port))
+                except Exception as e:
+                    raise RuntimeError ("port %d bind error %s"%(port, str(e)))
                 listeners[usock.fileno()] = (usock, protocol, 'p')
                 select_list.append (usock.fileno())
                 exception_list.append (usock.fileno())
@@ -109,7 +112,7 @@ def run_channel (*args, **kwargs):
                     select_list.append (newsock.fileno())
                 exception_list.append (newsock.fileno())
             else:
-                message = s.recv(MAX_DATA_SIZE)
+                message,frm = s.recvfrom(MAX_DATA_SIZE)
                 for fileno,(sock,chname,function) in subs.items():
                     try:
                         #print ("PubSub sending to %s"%chname)
@@ -119,7 +122,11 @@ def run_channel (*args, **kwargs):
 
 
 if __name__ == "__main__":
-    with open (CONFIG_FILE, "r") as yml:
+    if len(sys.argv) > 1:
+        cfg_file = sys.argv[1]
+    else:
+        cfg_file = CONFIG_FILE
+    with open (cfg_file, 'r') as yml:
         config = yaml.load (yml)
         yml.close ()
         channels = list()

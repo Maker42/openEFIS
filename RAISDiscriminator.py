@@ -13,7 +13,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-import time
+import sys, time
+
+import yaml
 
 from MicroServerComs import MicroServerComs
 
@@ -34,27 +36,43 @@ class RAISDiscriminator(MicroServerComs):
         MicroServerComs.__init__(self, "RAISDiscriminator", config=inputs_config)
         self.gps_magnetic_variation = dict()
         self.altitude = dict()
+        self.altitude_confidence = dict()
         self.Altitude_updated = dict()
         self.Altitude_updated_local_time = dict()
         self.airspeed = dict()
+        self.airspeed_confidence = dict()
         self.Airspeed_updated = dict()
         self.Airspeed_updated_local_time = dict()
         self.heading = dict()
+        self.heading_confidence = dict()
         self.Heading_updated = dict()
         self.Heading_updated_local_time = dict()
+        self.roll_rate = dict()
+        self.roll_rate_confidence = dict()
+        self.RollRate_updated = dict()
+        self.RollRate_updated_local_time = dict()
         self.roll = dict()
+        self.roll_confidence = dict()
         self.Roll_updated = dict()
         self.Roll_updated_local_time = dict()
         self.pitch = dict()
+        self.pitch_confidence = dict()
         self.Pitch_updated = dict()
         self.Pitch_updated_local_time = dict()
+        self.pitch_rate = dict()
+        self.pitch_rate_confidence = dict()
+        self.PitchRate_updated = dict()
+        self.PitchRate_updated_local_time = dict()
         self.yaw = dict()
+        self.yaw_confidence = dict()
         self.Yaw_updated = dict()
         self.Yaw_updated_local_time = dict()
         self.climb_rate = dict()
+        self.climb_rate_confidence = dict()
         self.ClimbRate_updated = dict()
         self.ClimbRate_updated_local_time = dict()
         self.turn_rate = dict()
+        self.turn_rate_confidence = dict()
         self.TurnRate_updated = dict()
         self.TurnRate_updated_local_time = dict()
         self.gps_utc = dict()
@@ -62,86 +80,86 @@ class RAISDiscriminator(MicroServerComs):
         self.gps_lng = dict()
         self.gps_ground_speed = dict()
         self.gps_ground_track = dict()
-        self.gps_signal_quality = dict()
+        self.ground_vector_confidence = dict()
         self.GroundVector_updated = dict()
         self.GroundVector_updated_local_time = dict()
 
         self.history = dict()
         self.input_map = dict()
         self.favored_channel = dict()
-        for sock,mychan,fromchan,output_values,fmt in self.subchannels.values():
+        for sock,mychan,fromchan,output_values,fmt,idx in self.subchannels.values():
             self.input_map[fromchan] = output_values
             self.favored_channel[fromchan] = None
 
-        self._publisher = RAISPublisher(self.outputs_config)
+        self._publisher = RAISPublisher(outputs_config)
 
-    def updated(self, channel, addr):
-        self.update_history (channel, addr)
-        self.update_discriminator (channel, addr)
+    def updated(self, channel, idx):
+        self.update_history (channel, idx)
+        self.update_discriminator (channel, idx)
         self.output (channel)
 
-    def update_history(self, channel, addr):
+    def update_history(self, channel, idx):
         # Check for lost feeds
         ts_name = channel + '_updated_local_time'
         d = getattr(self, ts_name)
         latest = time.time()
-        d[addr] = latest
+        d[idx] = latest
         interval = 0.1
         if 'gps' in self.input_map[channel][0]:
             interval = 1.0
         for a,tm in d.items():
-            if a == addr:
+            if a == idx:
                 continue
             tdiff = latest - tm
             if tdiff > interval * RAISDiscriminator.LOST_SIGNAL_INTERVALS:
-                self.append_history(addr, channel,
+                self.append_history(idx, channel,
                         (RAISDiscriminator.HIST_LOST_SIGNAL, latest))
-            elif self.get_latest_history(addr, channel)[0] == \
+            elif self.get_latest_history(idx, channel)[0] == \
                     RAISDiscriminator.HIST_LOST_SIGNAL:
-                self.append_history(addr, channel,
+                self.append_history(idx, channel,
                         (RAISDiscriminator.HIST_ACQUIRED_SIGNAL, latest))
 
         # Check confidence from latest update
         for vname in self.input_map[channel]:
             if 'confidence' in vname:
-                confidence = getattr(self,vname)[addr]
+                confidence = getattr(self,vname)[idx]
                 if confidence < RAISDiscriminator.LOW_CONFIDENCE_THRESHOLD:
-                    if self.get_latest_history(addr, channel)[0] == \
+                    if self.get_latest_history(idx, channel)[0] == \
                             RAISDiscriminator.HIST_CONFIDENCE_FAIL:
-                        if confidence < self.history[channel][addr][-1][1]:
-                            self.history[channel][addr][-1] = \
+                        if confidence < self.history[channel][idx][-1][1]:
+                            self.history[channel][idx][-1] = \
                                     (RAISDiscriminator.HIST_CONFIDENCE_FAIL, confidence, latest)
                     else:
-                        self.append_history(addr, channel,
+                        self.append_history(idx, channel,
                                 (RAISDiscriminator.HIST_CONFIDENCE_FAIL,
                                     confidence, latest))
-                elif self.get_latest_history(addr, channel)[0] == \
+                elif self.get_latest_history(idx, channel)[0] == \
                         RAISDiscriminator.HIST_CONFIDENCE_FAIL:
-                    self.append_history(addr, channel,
+                    self.append_history(idx, channel,
                             (RAISDiscriminator.HIST_CONFIDENCE_GOOD,
                                 confidence, latest))
 
-    def append_history(self, addr, channel, entry):
+    def append_history(self, idx, channel, entry):
         if not channel in self.history:
             self.history[channel] = dict()
-        if not addr in self.history[channel]:
-            self.history[channel][addr] = list()
-        self.history[channel][addr].append (entry)
+        if not idx in self.history[channel]:
+            self.history[channel][idx] = list()
+        self.history[channel][idx].append (entry)
 
-    def get_latest_history(self, addr, channel):
+    def get_latest_history(self, idx, channel):
         if not channel in self.history:
             return ('',0)
-        if not addr in self.history[channel]:
+        if not idx in self.history[channel]:
             return ('',0)
-        if len(self.history[channel][addr]) == 0:
+        if len(self.history[channel][idx]) == 0:
             return ('',0)
-        return self.history[channel][addr][-1]
+        return self.history[channel][idx][-1]
 
-    def update_discriminator(self, channel, addr):
+    def update_discriminator(self, channel, idx):
         if self.favored_channel[channel] == None:
-            self.favored_channel[channel] = addr    # Anything is better than nothing
+            self.favored_channel[channel] = idx    # Anything is better than nothing
         else:
-            h = self.get_latest_history (addr, channel)
+            h = self.get_latest_history (idx, channel)
 
             # Find the prime output value dictionary
             for vname in self.input_map[channel]:
@@ -166,13 +184,16 @@ class RAISDiscriminator(MicroServerComs):
                             self.score_variance (d, ad, median), ad)
                                     for ad in self.history[channel].keys()]
                 options.sort(reverse=True)  # Descending scores, first is best
-                self.favored_channel[channel] = options[0][1]
+                if self.favored_channel[channel] != options[0][1]:
+                    print ("RAISDiscriminator: favoring input pipeline %s for %s"%(
+                                self.favored_channel[channel], channel))
+                    self.favored_channel[channel] = options[0][1]
 
-    def score_history (self, addr, channel):
+    def score_history (self, idx, channel):
         ret = 0.0
         last_entry = None
-        if addr in self.history[channel]:
-            for entry in self.history[channel][addr]:
+        if idx in self.history[channel]:
+            for entry in self.history[channel][idx]:
                 if entry[0] == RAISDiscriminator.HIST_CONFIDENCE_FAIL:
                     ret -= (10.0 - entry[1]) * RAISDiscriminator.CONFIDENCE_SCORE_WEIGHT
                 if entry[0] == RAISDiscriminator.HIST_LOST_SIGNAL:
@@ -185,9 +206,9 @@ class RAISDiscriminator(MicroServerComs):
                 ret -= RAISDiscriminator.LOST_SIGNAL_FINAL_SCORE_WEIGHT
         return ret
 
-    def score_variance (self, d, addr, median):
-        if (median is not None) and addr in d:
-            variance = abs(d[addr] - median) / median
+    def score_variance (self, d, idx, median):
+        if (median is not None) and idx in d:
+            variance = abs(d[idx] - median) / median
             return variance * RAISDiscriminator.VARIANCE_SCORE_WEIGHT
         else:
             return 0.0
@@ -218,3 +239,19 @@ class RAISPublisher:
                 invname = ts_name
             setattr (o, vname, getattr(self, invname))
         o.publish()
+
+if __name__ == "__main__":
+    if len(sys.argv) < 3:
+        print ("RAIS Discriminator. Usage: RAISDiscriminator <input_config1> [input_confign...] <output_config>")
+        sys.exit(-1)
+    input_config = list()
+    for i in range(1,len(sys.argv)-1):
+        inp = open(sys.argv[i], "r")
+        if not inp:
+            print ("Cannot open file %s"%sys.argv[i])
+            sys.exit(-2)
+        input_config.append(yaml.load(inp))
+    with open(sys.argv[-1], "r") as outp:
+        output_config = yaml.load(outp)
+        rd = RAISDiscriminator (input_config, output_config)
+        rd.listen()

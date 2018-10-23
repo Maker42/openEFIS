@@ -78,8 +78,8 @@ class Control(MicroServerComs):
 
 
 class Sensors(MicroServerComs):
-    def __init__(self):
-        MicroServerComs.__init__(self, "Autopilot")
+    def __init__(self, pubsub_cfg=None):
+        MicroServerComs.__init__(self, "Autopilot", config=pubsub_cfg)
         self.gps_magnetic_variation = None
         self._given_barometer = GivenBarometer()
         self._known_altitude = KnownAltitude()

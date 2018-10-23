@@ -44,11 +44,19 @@ class MicroServerComs:
             if _pubsub_config is None:
                 raise RuntimeError ("MicroserverComs: pubsub config %s invalid"%CONFIG_FILE)
             config = _pubsub_config
+        if isinstance(config,list):
+            self.multi_receiver = True
+            for i,c in enumerate(config):
+                self.init_config(c,i, timeout)
+        else:
+            self.init_config(config,0, timeout)
+
+    def init_config(self, config, cfg_index, timeout):
         for chname,chcfg in config.items():
             pubs_cfg = chcfg['pubs']
-            #print ("pubs_cfg = %s"%str(pubs_cfg))
+            #print ("%s pubs_cfg = %s"%(chname, str(pubs_cfg)))
             subs_cfg = chcfg['subs']
-            #print ("subs_cfg = %s"%str(subs_cfg))
+            #print ("%s subs_cfg = %s"%(chname, str(subs_cfg)))
             if chname == self.channel:
                 # Describing my listeners
                 if subs_cfg is not None:
@@ -74,8 +82,7 @@ class MicroServerComs:
                                 else:
                                     self.pubchannel = socket.socket(type=socket.SOCK_STREAM)
                                 self.pubchannel.connect ((addr,port))
-                if 'recv_multi' in chcfg:
-                    self.multi_receiver = True
+                                #print ("Channel %s connecting to %s:%d"%(self.channel, addr, port))
             else:
                 if subs_cfg is not None:
                     for pipe in subs_cfg:
@@ -93,6 +100,7 @@ class MicroServerComs:
                                 self.subchannels[subchannel.fileno()] = ((subchannel,self.channel,chname
                                                                           ,chcfg['output_values']
                                                                           ,chcfg['format']
+                                                                          ,cfg_index
                                                                           ))
         if InternalPublisher.TheInternalPublisher is not None:
             InternalPublisher.TheInternalPublisher.register_channel (self.channel, self, self.subchannels)
@@ -111,7 +119,11 @@ class MicroServerComs:
             if timeout is None:
                 r,w,x = select.select (rsocks, [], xsocks)
             else:
-                r,w,x = select.select (rsocks, [], xsocks, timeout)
+                try:
+                    r,w,x = select.select (rsocks, [], xsocks, timeout)
+                except:
+                    print ("select error. rsocks=%s, xscoks=%s, timeout=%g"%(rsocks, xsocks, timeout))
+                    raise
             for errfd in x:
                 if errfd in self.subchannels:
                     raise RuntimeError ()
@@ -125,16 +137,16 @@ class MicroServerComs:
             if not (loop or got_data):
                 break
 
-    def inject(self, attr, val, addr):
+    def inject(self, attr, val, cfg_index):
         if self.multi_receiver:
             d = getattr(self, attr)
-            d[addr] = val
+            d[cfg_index] = val
         else:
             setattr (self, attr, val)
 
     def data_ready(self, rfd):
         if rfd in self.subchannels:
-            s,mychname,from_chname,input_values,input_format = self.subchannels[rfd]
+            s,mychname,from_chname,input_values,input_format,cfg_index = self.subchannels[rfd]
             data,addr = s.recvfrom(MAX_DATA_SIZE)
             values_list = struct.unpack (input_format, data)
             if self.input_mode == 'injection':
@@ -143,21 +155,21 @@ class MicroServerComs:
                 for vname,value in zip(input_values,values_list):
                     if vname == 'timestamp':
                         # Special timestamp handling
-                        self.inject (ts_name, value, addr)
+                        self.inject (ts_name, value, cfg_index)
                         timestamped = True
                         self.last_update_time = value
                     else:
-                        self.inject (vname, value, addr)
+                        self.inject (vname, value, cfg_index)
                 if not timestamped:
-                    self.inject (ts_name, time.time(), addr)
+                    self.inject (ts_name, time.time(), cfg_index)
                 if self.multi_receiver:
-                    self.updated (from_chname, addr)
+                    self.updated (from_chname, cfg_index)
                 else:
                     self.updated (from_chname)
             else:   # Input list mode
                 self.input (from_chname, input_values, values_list)
 
-    def publish(self):
+    def publish(self,debug=False):
         if self.has_external_listeners:
             if self.pubchannel is None:
                 raise RuntimeError ("Function %s has no pub channel"%self.function)
@@ -169,9 +181,10 @@ class MicroServerComs:
             except Exception as e:
                 print ("Struct packing error %s: args %s"%(str(e), str(pack_args)))
                 raise
-            #print ("%s connected sends %s"%(self.function, str(message)))
+            #if debug: print ("%s connected sends %s"%(self.function, str(message)))
             self.pubchannel.sendall (message)
-            #print ("External publish %s to function %s, file %d"%(self.output_values, self.function,
-            #    self.pubchannel.fileno()))
+            if debug:
+                print ("External publish %s to function %s, file %d"%(self.output_values, self.function,
+                        self.pubchannel.fileno()))
         if self.has_internal_listeners:
             InternalPublisher.TheInternalPublisher.publish (self.channel)
