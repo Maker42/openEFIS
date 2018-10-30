@@ -24,7 +24,6 @@ if __name__ == "__main__":
     opt = argparse.ArgumentParser(description='Send weather info to sensors')
     opt.add_argument('-v', '--magnetic-variation', default=None, help='The magnetic variation(declination) of the current position')
     opt.add_argument('-a', '--altitude', default=None, type=int, help='The currently known altitude')
-    opt.add_argument('-b', '--barometer', default=None, type=float, help='The given barometric pressure in inches of mercury')
     opt.add_argument('-s', '--wind-speed', default=None, type=int, help='The current wind speed in knots')
     opt.add_argument('--wind-heading', default=None, type=int, help='The current wind heading in degrees')
     opt.add_argument('-p', '--pubsub-config', default='sensors_pubsub.yml', help='YAML config file coms configuration')
@@ -34,6 +33,6 @@ if __name__ == "__main__":
         pubsub_config = yaml.load(yml)
         yml.close()
     s = Sensors(pubsub_config)
-    s.initialize (args.altitude, args.barometer, (args.wind_heading, args.wind_speed))
+    s.initialize (args.altitude, (args.wind_heading, args.wind_speed))
     s.WaitSensorsGreen()
 

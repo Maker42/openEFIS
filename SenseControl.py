@@ -81,7 +81,6 @@ class Sensors(MicroServerComs):
     def __init__(self, pubsub_cfg=None):
         MicroServerComs.__init__(self, "Autopilot", config=pubsub_cfg)
         self.gps_magnetic_variation = None
-        self._given_barometer = GivenBarometer()
         self._known_altitude = KnownAltitude()
         self._flight_mode = FlightModeSource()
         self._wind_report = WindsAloftReport()
@@ -103,11 +102,9 @@ class Sensors(MicroServerComs):
         self.gps_signal_quality = None
         self.gps_magnetic_variation = None
 
-    def initialize(self, alt, barometer, wind):
+    def initialize(self, alt, wind):
         if alt is not None:
             self.KnownAltitude (alt)
-        if barometer is not None:
-            self._given_barometer.send(barometer)
         self.wind_report = wind
 
     def FlightMode(self, mode, vertical = 1):
@@ -244,15 +241,6 @@ class KnownAltitude(MicroServerComs):
 
     def send(self, alt):
         self.known_altitude = alt
-        self.publish()
-
-class GivenBarometer(MicroServerComs):
-    def __init__(self):
-        self.given_barometer = None
-        MicroServerComs.__init__(self, "GivenBarometer", channel='givenbarometer')
-
-    def send(self, b):
-        self.given_barometer = b
         self.publish()
 
 class FlightModeSource(MicroServerComs):

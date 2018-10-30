@@ -1,3 +1,14 @@
+givenbarometer:
+  output_values:
+      - given_barometer
+  format: f
+  pubs:
+  - {addr: localhost, port: 49100, protocol: udp, function: GivenBarometer}
+  subs:
+  # Here we have to list the publisher,
+  # and all subscribers in all of the multiple sensor pipeline domains.
+  - {addr: localhost, port: 49101, protocol: udp, function: PressureFactors}
+
 
 #
 # Best guess computations

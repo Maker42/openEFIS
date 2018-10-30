@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # Copyright (C) 2018  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
@@ -41,6 +42,7 @@ class RAISDiscriminator(MicroServerComs):
         self.Altitude_updated_local_time = dict()
         self.airspeed = dict()
         self.airspeed_confidence = dict()
+        self.airspeed_is_estimated = dict()
         self.Airspeed_updated = dict()
         self.Airspeed_updated_local_time = dict()
         self.heading = dict()
@@ -215,6 +217,7 @@ class RAISDiscriminator(MicroServerComs):
 
     def output(self, channel):
         ts_name = channel + '_updated'
+        #print ("channel %s updating"%channel)
         for vname in self.input_map[channel]:
             attrname = vname
             if 'timestamp' in vname:

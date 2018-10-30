@@ -37,6 +37,7 @@ class RAIS(MicroServerComs):
                 yml.close()
         else:
             cfg = None
+        self.pubsub_config = cfg
         MicroServerComs.__init__(self, "Display", config=cfg)
         self.altitude = None
         self.airspeed = None
@@ -84,3 +85,13 @@ class RAIS(MicroServerComs):
         if not ret:
             print ("-")
         return ret
+
+class GivenBarometer(MicroServerComs):
+    def __init__(self, cfg=None):
+        self.given_barometer = None
+        MicroServerComs.__init__(self, "GivenBarometer", channel='givenbarometer', config=cfg)
+
+    def send(self, b):
+        self.given_barometer = b
+        self.publish()
+

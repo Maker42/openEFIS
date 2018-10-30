@@ -9,7 +9,7 @@ accelerometers:
       - a_z
   format: dfff
   pubs:
-  - {addr: 192.168.0.2, port: 49020, protocol: udp, function: RawAccelerometers}
+  - {addr: 192.168.0.5, port: 49020, protocol: udp, function: RawAccelerometers}
   subs:
   - {addr: localhost, port: 49021, protocol: udp, function: Yaw}
   - {addr: localhost, port: 49022, protocol: udp, function: PitchEstimate}
@@ -24,7 +24,7 @@ rotationsensors:
       - r_z
   format: dfff
   pubs:
-  - {addr: 192.168.0.2, port: 49030, protocol: udp, function: RawRotationSensors}
+  - {addr: 192.168.0.5, port: 49030, protocol: udp, function: RawRotationSensors}
   subs:
   - {addr: localhost, port: 49031, protocol: udp, function: Pitch}
   - {addr: localhost, port: 49032, protocol: udp, function: Roll}
@@ -39,7 +39,7 @@ magneticsensors:
       - m_z
   format: dfff
   pubs:
-  - {addr: 192.168.0.2, port: 49040, protocol: udp, function: RawMagneticSensors}
+  - {addr: 192.168.0.5, port: 49040, protocol: udp, function: RawMagneticSensors}
   subs:
   - {addr: localhost, port: 49041, protocol: udp, function: HeadingComputed}
 
@@ -50,7 +50,7 @@ pressuresensors:
       - pitot_pressure
   format: dff
   pubs:
-  - {addr: 192.168.0.2, port: 49050, protocol: udp, function: RawPressureSensors}
+  - {addr: 192.168.0.5, port: 49050, protocol: udp, function: RawPressureSensors}
   subs:
   - {addr: localhost, port: 49051, protocol: udp, function: PressureFactors}
   - {addr: localhost, port: 49052, protocol: udp, function: AltitudeComputed}
@@ -61,7 +61,7 @@ temperaturesensors:
       - temperature     # In Celcius
   format: f
   pubs:
-  - {addr: 192.168.0.2, port: 49060, protocol: udp, function: RawTemperatureSensors}
+  - {addr: 192.168.0.5, port: 49060, protocol: udp, function: RawTemperatureSensors}
   subs:
   - {addr: localhost, port: 49061, protocol: udp, function: PressureFactors}
   - {addr: localhost, port: 49062, protocol: udp, function: AltitudeComputed}
@@ -78,7 +78,7 @@ gpsfeed:
       - gps_magnetic_variation
   format: dddiiiif
   pubs:
-  - {addr: 192.168.0.2, port: 49070, protocol: udp, function: GPSFeed}
+  - {addr: 192.168.0.5, port: 49070, protocol: udp, function: GPSFeed}
   subs:
   - {addr: localhost, port: 49071, protocol: udp, function: TrackRate}
   - {addr: localhost, port: 49072, protocol: udp, function: ClimbRateEstimate}
@@ -114,7 +114,11 @@ givenbarometer:
       - given_barometer
   format: f
   pubs:
-  - {addr: localhost, port: 49100, protocol: udp, function: GivenBarometer}
+  #- {addr: localhost, port: 49100, protocol: udp, function: GivenBarometer}
+  # Commented out because the publisher is in the RAIS domain, while the receiver
+  # is in the microservices domain. Here we have to not list any publisher,
+  # any only list one subscriber, even though there are multiple subscribers in
+  # multiple sensor pipeline domains.
   subs:
   - {addr: localhost, port: 49101, protocol: udp, function: PressureFactors}
 
