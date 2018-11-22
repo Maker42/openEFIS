@@ -24,6 +24,7 @@ class Control(MicroServerComs):
         MicroServerComs.__init__(self, "Control")
         self._lookup_tables = dict()
         self._throttle_table = None
+        self.engaged = False
 
     def SetAnalogChannel(self, channel, val):
         if not channel in self._lookup_tables:
@@ -76,11 +77,15 @@ class Control(MicroServerComs):
             mx = mx if mx > k else k
         return (mn,mx)
 
+    def SetEngagedState(self, engage):
+        self.engaged = engage
+        self.publish()
+
 
 class Sensors(MicroServerComs):
     def __init__(self, pubsub_cfg=None):
         MicroServerComs.__init__(self, "Autopilot", config=pubsub_cfg)
-        self.gps_magnetic_variation = None
+        self.magnetic_variation = None
         self._known_altitude = KnownAltitude()
         self._flight_mode = FlightModeSource()
         self._wind_report = WindsAloftReport()
@@ -100,7 +105,6 @@ class Sensors(MicroServerComs):
         self.gps_ground_speed = None
         self.gps_ground_track = None
         self.gps_signal_quality = None
-        self.gps_magnetic_variation = None
 
     def initialize(self, alt, wind):
         if alt is not None:
@@ -112,9 +116,6 @@ class Sensors(MicroServerComs):
 
     def KnownAltitude(self, alt):
         self._known_altitude.send(alt)
-
-    def KnownMagneticVariation(self, v):
-        self.gps_magnetic_variation = v
 
     def WindsAloftReport(self, lat, lng, altitude, timestamp, direction, speed):
         self._wind_report.send (lat, lng, altitude, timestamp, direction, speed)
@@ -165,14 +166,14 @@ class Sensors(MicroServerComs):
 
     def TrueHeading(self):
         self.listen (timeout=0, loop=False)
-        if self.gps_magnetic_variation is not None:
-            return self.heading - self.gps_magnetic_variation
+        if self.magnetic_variation is not None:
+            return self.heading - self.magnetic_variation
         else:
             return self.heading
 
     def MagneticDeclination(self):
-        if self.gps_magnetic_variation != None:
-            return self.gps_magnetic_variation
+        if self.magnetic_variation != None:
+            return self.magnetic_variation
         else:
             return 0.0
 

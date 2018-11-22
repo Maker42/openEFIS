@@ -1,4 +1,4 @@
-# Copyright (C) 2015  Garrett Herschleb
+# Copyright (C) 2015-2018  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -49,14 +49,13 @@ class PID:
      *   false when nothing has been done.
      **********************************************************************************/ 
     """
-    # returns: double
     def Compute(self, inp, millis):
        if(not self.inAuto):
            return self.lastOutput
        now = millis
        timeChange = (now - self.lastTime)
        if(timeChange>=self.SampleTime):
-          # Compute all the working error variables*/
+          # Compute all the working error variables
           error = self.mySetpoint - inp
           self.ITerm += (self.ki * error)
           if(self.ITerm > self.outMax):
@@ -65,7 +64,7 @@ class PID:
             self.ITerm = self.outMin
           dInput = (inp - self.lastInput)
      
-          # Compute PID Output*/
+          # Compute PID Output
           if self.acheivementTime > 0.0:
               self.lastOutput = (self.kp * error + self.ITerm -
                       self.kd * (dInput - error / self.acheivementTime))
@@ -79,7 +78,7 @@ class PID:
           logger.log (1, "setpoint = %g, error = %g, iterm = %g, dInput=%g, out = %g",
                   self.mySetpoint, error, self.ITerm, dInput, self.lastOutput)
           
-          # Remember some variables for next time*/
+          # Remember some variables for next time
           self.lastInput = inp
           self.lastTime = now
        return self.lastOutput
@@ -211,3 +210,78 @@ class PID:
         self.mySetpoint = setpoint
         SampleTimeInSec = float(self.SampleTime)/1000.0
         self.acheivementTime = acheivementTime * SampleTimeInSec
+
+
+class OutputAdaptivePID(PID):
+    """ A PID decorator class which allows for outputs that are inconsistently responsive.
+        An unreponsive output can be dealt with in two ways when the actual output doesn't match the requested ouput:
+        1) Skip the ITerm update (iterm_update_threshold)
+        2) If the input is converging to the set point anyway, move the requested output move
+           toward the actual output (enable_output_adaptation)
+    """
+    def __init__(self, setPoint, Kp, Ki, Kd, direction, millis):
+        super(OutputAdaptivePID, self).__init__(setPoint, Kp, Ki, Kd, direction, millis)
+        self.iterm_update_threshold = -1
+        self.enable_output_adaptation = False
+        self.output_adaptation_multiplier = .1
+
+    def SetAdaptation(self, iterm_update_threshold, enable_output_adaptation,
+                            output_adaptation_multiplier):
+        self.iterm_update_threshold = iterm_update_threshold
+        self.enable_output_adaptation = enable_output_adaptation
+        self.output_adaptation_multiplier = output_adaptation_multiplier
+
+    def Compute(self, inp, actual_outp, millis):
+        if(not self.inAuto):
+            return actual_outp
+        outp = None
+        dInput = (inp - self.lastInput)
+        dTime = millis - self.lastTime
+        if self.iterm_update_threshold >= 0:
+            output_error = (self.lastOutput-actual_outp)
+            if abs(output_error) > self.iterm_update_threshold:
+                self.lastTime = millis
+                outp = self.lastOutput
+                logger.log (1, "AdaptivePID skip iterm: error_ratio %g(last)-%g(act)=>%g",
+                        self.lastOutput, actual_outp, output_error)
+        if outp is None:
+            outp = super(OutputAdaptivePID,self).Compute (inp, millis)
+        else:
+            # Remember some variables for next time
+            self.lastInput = inp
+            self.lastTime = millis
+        if self.enable_output_adaptation and dTime > 0:
+            output_error = (self.lastOutput-actual_outp)
+            error = self.mySetpoint - inp
+            progress = dInput * self.acheivementTime / dTime
+            if inp < self.mySetpoint:
+                if inp + progress > self.mySetpoint or \
+                        (self.lastOutput < actual_outp and self.controllerDirection == DIRECT) or \
+                        (self.lastOutput > actual_outp and self.controllerDirection == REVERSE):
+                    # The actual output is doing better than the computed output. Move the computed output in that direction
+                    adjustment = output_error * self.output_adaptation_multiplier
+                    outp -= adjustment
+                    logger.log (1, "AdaptivePID adjust output: inp %g, progress %g, setpoint %g, adjustment %g",
+                                    inp, progress, self.mySetpoint, adjustment)
+                else:
+                    logger.log (1, "AdaptivePID NO adjust output: inp %g, progress %g, setpoint %g",
+                                    inp, progress, self.mySetpoint)
+            else:
+                if inp + progress <= self.mySetpoint or \
+                        (self.lastOutput > actual_outp and self.controllerDirection == DIRECT) or \
+                        (self.lastOutput < actual_outp and self.controllerDirection == REVERSE):
+                    # The actual output is doing better than the computed output. Move the computed output in that direction
+                    adjustment = output_error * self.output_adaptation_multiplier
+                    outp -= adjustment
+                    logger.log (1, "AdaptivePID adjust output: inp %g, progress %g, setpoint %g, adjustment %g",
+                                    inp, progress, self.mySetpoint, adjustment)
+                else:
+                    logger.log (1, "AdaptivePID NO adjust output: inp %g, progress %g, setpoint %g",
+                                    inp, progress, self.mySetpoint)
+            self.lastOutput = outp
+            if(self.lastOutput > self.outMax):
+                self.lastOutput = self.outMax
+            elif(self.lastOutput < self.outMin):
+                self.lastOutput = self.outMin
+          
+        return self.lastOutput

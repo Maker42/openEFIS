@@ -20,7 +20,8 @@ import Globals
 import Common.util as util
 
 import SenseControl, CommandControl
-import Xplane, SurfaceControl, AttitudeControl, FlightControl, AttitudeControlVTOL, GroundControl
+import Xplane, FixSensors
+import SurfaceControl, AttitudeControl, FlightControl, AttitudeControlVTOL, GroundControl
 import TakeoffControlVTOL, LandingControlVTOL, AttitudeVTOLEstimation
 import MiddleEngineTiltControl, VTOLYawControl, SolenoidControl, ThrottleControl
 import TakeoffControl, LandingControl
@@ -35,6 +36,7 @@ class Airplane(FileConfig.FileConfig):
         self.GroundEffectHeight = 15.0
 
         # Operating parameters:
+        self.FlyWaypoints = True
         self.BatteryMinReserve = 30
         self.ApproachEndpoints = list()
         self.RunwayAltitude = None
@@ -43,10 +45,8 @@ class Airplane(FileConfig.FileConfig):
         self.RunwayLength = 0
 
 
-        self.DesiredCourse = [(0,0), (0,0)]
-        self.DesiredAltitude = 0
-        self.WayPoints = list()
-        self._next_waypoint = 0
+        self._DesiredCourse = [(0,0), (0,0)]
+        self._DesiredAltitude = 0
 
         self._desired_heading = 0
         self.CurrentFlightMode = Globals.FLIGHT_MODE_GROUND
@@ -124,22 +124,31 @@ class Airplane(FileConfig.FileConfig):
 
         self.InitializeFromFileLines (filelines)
 
-        self._aileron_control.SetServoController(self._servo_controller)
-        self._elevator_control.SetServoController(self._servo_controller)
-        self._rudder_control.SetServoController(self._servo_controller)
-        self._throttle_control.SetServoController(self._servo_controller)
-        if self._middle_engine_tilt_control:
-            self._middle_engine_tilt_control.SetServoController(self._servo_controller)
-        if self._VTOL_engine_release_control:
-            self._VTOL_engine_release_control.SetServoController(self._servo_controller)
-        if self._forward_engine_release_control:
-            self._forward_engine_release_control.SetServoController(self._servo_controller)
-        if self._gear_control:
-            self._gear_control.SetServoController(self._servo_controller)
-        if self._flap_control:
-            self._flap_control.SetServoController(self._servo_controller)
+        if self._servo_controller is not None:
+            self._aileron_control.SetServoController(self._servo_controller)
+            self._elevator_control.SetServoController(self._servo_controller)
+            if self._rudder_control is not None:
+                self._rudder_control.SetServoController(self._servo_controller)
+            if self._throttle_control is not None:
+                self._throttle_control.SetServoController(self._servo_controller)
+            if self._middle_engine_tilt_control is not None:
+                self._middle_engine_tilt_control.SetServoController(self._servo_controller)
+            if self._VTOL_engine_release_control is not None:
+                self._VTOL_engine_release_control.SetServoController(self._servo_controller)
+            if self._forward_engine_release_control is not None:
+                self._forward_engine_release_control.SetServoController(self._servo_controller)
+            if self._gear_control is not None:
+                self._gear_control.SetServoController(self._servo_controller)
+            if self._flap_control is not None:
+                self._flap_control.SetServoController(self._servo_controller)
         self.ComputeRunwayEndpoints()
         Globals.TheAircraft = self
+
+    def SetWaypointNumber(self, wpnum):
+        self._flight_control.SetWaypointNumber (wpnum)
+
+    def SetFlyWaypoints(self, y):
+        self.FlyWaypoints = y
 
     def ComputeRunwayEndpoints(self):
         if self.RunwayAltitude == None:
@@ -154,6 +163,9 @@ class Airplane(FileConfig.FileConfig):
             else:
                 end = position
             self.ApproachEndpoints = [position, end]
+
+    def Sensors(self):
+        return self._sensors
 
     def init_attitude_control(self, args, filelines):
         if not (self._aileron_control and self._elevator_control and self._rudder_control and self._sensors):
@@ -170,8 +182,8 @@ class Airplane(FileConfig.FileConfig):
             self._attitude_control.initialize(filelines)
 
     def init_flight_control(self, args, filelines):
-        if not (self._attitude_control and self._throttle_control and self._sensors):
-            raise RuntimeError("Must initialize fundamental controls before flight control")
+        if self._sensors is None:
+            raise RuntimeError("Must initialize sensors before flight control")
         self._flight_control = FlightControl.FlightControl(self._attitude_control,
                 self._throttle_control, self._sensors, self)
         self._flight_control.initialize(filelines)
@@ -184,8 +196,8 @@ class Airplane(FileConfig.FileConfig):
         self._ground_control.initialize(filelines)
 
     def init_takeoff_control(self, args, filelines):
-        if not (self._aileron_control and self._elevator_control and self._rudder_control and self._sensors
-                and self._throttle_control):
+        if not (self._aileron_control and self._elevator_control and self._rudder_control
+                and self._sensors and self._throttle_control):
             raise RuntimeError("Must initialize fundamental controls before takeoff control")
         if len(args) > 1 and args[1] == "TakeoffControlVTOL":
             if not self._attitude_vtol_estimation:
@@ -251,9 +263,7 @@ class Airplane(FileConfig.FileConfig):
 
     def init_sensors(self, args, filelines):
         self._sensors = eval(' '.join(args[1:]))
-        self._sensors.initialize(self.known_altitude,
-                                self.given_barometer,
-                                self.winds)
+        self._sensors.initialize(filelines)
         self._sensors.WaitSensorsGreen()
 
     def init_servo_control(self, args, filelines):
@@ -307,20 +317,15 @@ class Airplane(FileConfig.FileConfig):
                 self.DesiredCourse[1][0], self.DesiredCourse[1][1], 
                 self.RunwayAltitude)
 
-    def NextWayPoint(self, next_waypoint, desired_altitude=0, desired_airspeed=0):
-        assert (self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN)
-        last_waypoint = self.DesiredCourse[1]
-        self.DesiredCourse = [last_waypoint, next_waypoint]
-        heading,distance,_ = util.TrueHeadingAndDistance (self.DesiredCourse)
-        ret = "Flying to waypoint %g nm away, bearing %g degrees, with altitude %g"%(
-                    distance, heading, desired_altitude, desired_airspeed)
-        logger.info(ret)
-        if desired_altitude:
-            self.DesiredAltitude = desired_altitude
-        if desired_airspeed:
-            self.DesiredAirSpeed = desired_airspeed
-        self._flight_control.FollowCourse(self.DesiredCourse, self.DesiredAltitude)
-        return ret
+    def NextWayPoint(self):
+        if (self.CurrentFlightMode != Globals.FLIGHT_MODE_AIRBORN):
+            return None
+        return self._flight_control.NextWayPoint()
+
+    def BeginFlightPlan(self):
+        if (self.CurrentFlightMode != Globals.FLIGHT_MODE_AIRBORN):
+            return None
+        return self._flight_control.BeginFlightPlan()
 
     def Swoop(self, low_alt, high_alt, min_airspeed = 0):
         self._flight_control.Swoop(low_alt, high_alt, min_airspeed)
@@ -376,13 +381,113 @@ class Airplane(FileConfig.FileConfig):
         self._flight_control.Turn (degrees, roll, self.DesiredAltitude)
         return ret
 
+    def getDesiredAltitude(self):
+        return self._DesiredAltitude
+
     def ChangeAltitude(self, desired_altitude):
-        assert (self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN)
-        ret = "New altitude %g"%desired_altitude
-        logger.info (ret)
-        self.DesiredAltitude = desired_altitude
+        self._DesiredAltitude = desired_altitude
         self._flight_control.DesiredAltitude = desired_altitude
-        return ret
+    DesiredAltitude = property (getDesiredAltitude, ChangeAltitude)
+
+    def getDesiredCourse(self):
+        return self._DesiredCourse
+
+    def setDesiredCourse(self, x):
+        self._DesiredCourse = x
+        self._flight_control.DesiredCourse = x
+
+    DesiredCourse = property (getDesiredCourse, setDesiredCourse)
+
+    def getSelectedAltitude(self):
+        return self._flight_control.SelectedAltitude
+
+    def setSelectedAltitude(self, a):
+        self._flight_control.SelectedAltitude = a
+
+    SelectedAltitude = property(getSelectedAltitude, setSelectedAltitude)
+
+    def getDesiredAirSpeed(self):
+        return self._flight_control.DesiredAirSpeed
+
+    def setDesiredAirSpeed(self, x):
+        self._flight_control.DesiredAirSpeed = x
+    DesiredAirSpeed = property(getDesiredAirSpeed, setDesiredAirSpeed)
+
+    def getDesiredTrueHeading(self):
+        return self._flight_control.DesiredTrueHeading
+
+    def setDesiredTrueHeading(self, x):
+        self._flight_control.DesiredTrueHeading = x
+    DesiredTrueHeading = property(getDesiredTrueHeading, setDesiredTrueHeading)
+
+    def getMinClimbAirSpeed(self):
+        return self._flight_control.MinClimbAirSpeed
+
+    def setMinClimbAirSpeed(self, x):
+        self._flight_control.MinClimbAirSpeed = x
+    MinClimbAirSpeed = property(getMinClimbAirSpeed, setMinClimbAirSpeed)
+
+    def getDesiredClimbRate(self):
+        return self._flight_control.DesiredClimbRate
+
+    def setDesiredClimbRate(self, x):
+        self._flight_control.DesiredClimbRate = x
+    DesiredClimbRate = property(getDesiredClimbRate, setDesiredClimbRate)
+
+    def getHnavMode(self):
+        return self._flight_control.HnavMode
+
+    def setHnavMode(self, x):
+        self._flight_control.HnavMode = x
+
+    HnavMode = property(getHnavMode, setHnavMode)
+
+    def getVnavMode(self):
+        return self._flight_control.VnavMode
+
+    def setVnavMode(self, x):
+        self._flight_control.VnavMode = x
+    VnavMode = property(getVnavMode, setVnavMode)
+
+    def getAltitudeSource(self):
+        return self._flight_control.AltitudeSource
+
+    def setAltitudeSource(self, x):
+        self._flight_control.AltitudeSource = x
+    AltitudeSource = property(getAltitudeSource, setAltitudeSource)
+
+    def getStartStrategy(self):
+        return self._flight_control.StartStrategy
+
+    def setStartStrategy(self, x):
+        self._flight_control.StartStrategy = x
+    StartStrategy = property(getStartStrategy, setStartStrategy)
+
+    def SetWaypoints(self, wp, alts):
+        self._flight_control.Waypoints = wp
+        self._flight_control.WPAltitudes = alts
+
+    def getDesiredTurnRate(self):
+        return self._flight_control.DesiredTurnRate
+
+    def setDesiredTurnRate(self, x):
+        self._flight_control.DesiredTurnRate = x
+    DesiredTurnRate = property(getDesiredTurnRate, setDesiredTurnRate)
+
+    def getSelectedPitch(self):
+        return self._flight_control.SelectedPitch
+
+    def setSelectedPitch(self, x):
+        self._flight_control.SelectedPitch = x
+    SelectedPitch = property(getSelectedPitch, setSelectedPitch)
+
+    def getSelectedGlideSlope(self):
+        return self._flight_control.SelectedGlideSlope
+
+    def setSelectedGlideSlope(self, x):
+        self._flight_control.SelectedGlideSlope = x
+    SelectedGlideSlope = property(getSelectedGlideSlope, setSelectedGlideSlope)
+
 
     def StraightAndLevel(self, dtime, desired_altitude=0, desired_airspeed=0, desired_heading=None):
         ret = "Flying Straight and Level for %g seconds, alt=%s, airspeed=%s, heading=%s"%(
@@ -398,8 +503,43 @@ class Airplane(FileConfig.FileConfig):
             self._current_directive_end_time = self._sensors.Time() + dtime
         return ret
 
+    def initialize_input(self
+                         ,SelectedAltitude
+                         ,DesiredAirSpeed
+                         ,DesiredTrueHeading
+                         ,DesiredClimbRate
+                         ,HnavMode
+                         ,VnavMode
+                         ,AltitudeSource
+                         ,StartStrategy
+                         ,Waypoints
+                         ,WPAltitudes
+                         ,DesiredTurnRate
+                         ,SelectedPitch
+                         ,SelectedGlideSlope
+                         ):
+        self._flight_control.initialize_input(
+                          SelectedAltitude
+                         ,DesiredAirSpeed
+                         ,DesiredTrueHeading
+                         ,DesiredClimbRate
+                         ,HnavMode
+                         ,VnavMode
+                         ,AltitudeSource
+                         ,StartStrategy
+                         ,Waypoints
+                         ,WPAltitudes
+                         ,DesiredTurnRate
+                         ,SelectedPitch
+                         ,SelectedGlideSlope
+                         )
+
     def SensorSnapshot(self):
         return self._sensors.Snapshot()
+
+    def SetServoEngagedState(self, engage):
+        if self._servo_controller is not None:
+            self._servo_controller.SetEngagedState(engage)
 
     # Inputs specify touchdown point and (exact) heading and altitude of runway
     def Land(self, touchdown=None, length=0, heading=-1, end=None, runway_altitude=None,
@@ -447,23 +587,29 @@ class Airplane(FileConfig.FileConfig):
     def Update(self):
         if self.has_crashed():
             logger.error("Airplane crashed")
-            self._throttle_control.Set(0)
+            if self._throttle_control is not None: self._throttle_control.Set(0)
             return -1
-        if not self._was_moving and self._sensors.GroundSpeed() > 0:
+        if not self._was_moving and self._sensors.GroundSpeed() > 10:
             self._was_moving = True
         if self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN:
-            self._flight_control.Update()
+            if self._sensors.AirSpeed() < 3:
+                print ("Now ground mode")
+                self.ChangeMode(Globals.FLIGHT_MODE_GROUND)
+            attitude = self._flight_control.Update()
             if self._current_directive_end_time != 0 and self._current_directive_end_time <= self._sensors.Time():
                 # The latest optimization step was running but has completed. Go to next directive
                 self._current_directive_end_time = 0
                 logger.debug("Completed last timed directive")
                 self.GetNextDirective()
+            return attitude
         elif self.CurrentFlightMode == Globals.FLIGHT_MODE_GROUND:
-            self._ground_control.Update()
+            if self._ground_control is not None: self._ground_control.Update()
+            if self._sensors.AirSpeed() > self.StallSpeed:
+                self.ChangeMode(Globals.FLIGHT_MODE_AIRBORN)
         elif self.CurrentFlightMode == Globals.FLIGHT_MODE_LANDING:
-            self._landing_control.Update()
+            if self._landing_control is not None: self._landing_control.Update()
         elif self.CurrentFlightMode == Globals.FLIGHT_MODE_TAKEOFF:
-            self._takeoff_control.Update()
+            if self._takeoff_control is not None: self._takeoff_control.Update()
         if self._command_control:
             asyncore.loop(0.001, count=1)
         return self._return_state
@@ -493,11 +639,11 @@ class Airplane(FileConfig.FileConfig):
         if self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN:
             self._flight_control.Start(last_desired_pitch)
         elif self.CurrentFlightMode == Globals.FLIGHT_MODE_GROUND:
-            self._ground_control.Start()
+            if self._ground_control is not None: self._ground_control.Start()
         elif self.CurrentFlightMode == Globals.FLIGHT_MODE_LANDING:
-            self._landing_control.Start(last_desired_pitch)
+            if self._landing_control is not None: self._landing_control.Start(last_desired_pitch)
         elif self.CurrentFlightMode == Globals.FLIGHT_MODE_TAKEOFF:
-            self._takeoff_control.Start()
+            if self._takeoff_control is not None: self._takeoff_control.Start()
 
         self._return_state = 1
 
@@ -573,8 +719,11 @@ class Airplane(FileConfig.FileConfig):
             self._flight_plan_index += 1
             if self._flight_plan_index >= len(self.FlightPlan):
                 if (self.FlightPlanLoopStart  >= len(self.FlightPlan)):
-                    print ("Fatal: No Command Available. Returning to Base.")
-                    return self.Land()
+                    if not self.FlyWaypoints:
+                        print ("Fatal: No Command Available. Returning to Base.")
+                        return self.Land()
+                    else:
+                        return  self.NextWayPoint()
                 self._flight_plan_index = self.FlightPlanLoopStart
             command = self.FlightPlan[self._flight_plan_index]
             command = command.strip()

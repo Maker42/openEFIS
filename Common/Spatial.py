@@ -1,4 +1,4 @@
-# Copyright (C) 2012-2014  Garrett Herschleb
+# Copyright (C) 2012-2018  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -39,12 +39,12 @@ class Point3:
             self.z = z
     
     def __str__(self):
-        return "%g,%g,%g"%(self.x, self.y, self.z)
+        return "%g,%g,%g"%(round(self.x,4), round(self.y,4), round(self.z,4))
 
     def norm(self):
         return math.sqrt(self.x * self.x + self.y * self.y + self.z * self.z)
 
-    def to_polar(self,  limit_phi = False, robot_coordinates=True):
+    def to_polar(self,  limit_phi = False, robot_coordinates=False):
         rad = self.norm()
         if (0 == rad):
             theta = phi = 0
@@ -66,7 +66,7 @@ class Point3:
 
         return Polar(theta,phi,rad)
 
-    def from_polar(self, p, robot_coordinates=True):
+    def from_polar(self, p, robot_coordinates=False):
         if robot_coordinates:
             phi = M_PI_2 - p.phi
             theta = p.theta + M_PI_2
@@ -188,7 +188,7 @@ class Polar:
             self.phi = p
             self.rad = r
 
-    def from3 (self, p3,  limit_phi=False, robot_coordinates=True):
+    def from3 (self, p3,  limit_phi=False, robot_coordinates=False):
         self.rad = p3.norm()
         if (0 == self.rad):
             self.theta = self.phi = 0
@@ -208,7 +208,7 @@ class Polar:
                 self.phi = math.asin (p3.z / rad)
                 self.theta = math.atan2 (p3.y, p3.x)
 
-    def to3 (self, robot_coordinates=True):
+    def to3 (self, robot_coordinates=False):
         if robot_coordinates:
             phi = M_PI_2 - self.phi
             theta = self.theta + M_PI_2
@@ -244,6 +244,9 @@ class Ray:
         ret.mult(time)
         ret.add(self.org)
         return ret
+
+    def __str__(self):
+        return 'ray org %s, dir %s'%(self.org, self.dir)
 
 class Plane:
     def __init__(self, p1=None,p2=None,p3=None,normal=None):
@@ -281,6 +284,9 @@ class Plane:
         r = Ray(c,dir=self.normal)
         return self.intersect(r)
 
+    def __str__(self):
+        return 'plane normal %s, c=%g'%(self.normal, self.c)
+
 class Screen:
     def __init__(self, plane, org, xvec,  yvec=None):
         self.plane = plane
@@ -302,9 +308,9 @@ class Screen:
         pos.add(yvec)
         return pos
 
-    def point2D(self,r):
+    def point2D(self,r,allow_negative_time=False):
         if isinstance(r,Ray):
-            intr = self.plane.intersect(r)
+            intr = self.plane.intersect(r, allow_negative_time)
             svct = Vector(ref=intr)
         elif isinstance(r,Point3):
             svct = copy.deepcopy(r)
@@ -315,127 +321,11 @@ class Screen:
         y = (svct.dot_product(self.y.dir))
         return (x,y)
 
+    def __str__(self):
+        return 'screen %s, x %s, y%s'%(self.plane, self.x, self.y)
 
-#def get_non_rotated_axis (z,  limit_phi):
-#    pol = z.to_polar(limit_phi)
-#    pol.phi=M_PI_2
-#    pol.theta -= M_PI_2
-#    rot0_xaxis = pol.to3()
-#    return rot0_xaxis
-
-# Return the x axis for a given z, such that:
-#  1. x is in the x-z plane (y component is zero)
-#  2. The resulting y axis is pointing up (positive y.y)
-def get_non_rotated_axis (z):
-    y = Vector(0,1,0)
-    if abs(abs(y.dot_product(z))-1) < .00001:
-        x = Vector(1,0,0)
-    else:
-        try:
-            x = y.cross_product (z)
-        except Exception as e:
-            raise RuntimeError("Exception %s in get_non_rotated_axis operation %s.cross_product (%s)"%(str(e),str(z),str(y)))
-        try:
-            x.div(x.norm())
-        except Exception as e:
-            raise RuntimeError("Exception %s in get_non_rotated_axis operation %s.div (norm()) with z=%s"%(str(e),str(x),str(z)))
-        yvec = z.cross_product(x)
-        assert(yvec.y >= 0)
-    return x
-
-def get_non_rotated_screen(p,  zvec,  rot0_xaxis, y_axis=None):
-    plane=Plane(p,  normal=zvec)
-    #org=Cartesian(0, 0, 0)
-    #ray=Ray(org, zvec)
-    #org=plane.intersect(ray)
-    screen=Screen(plane, p,  rot0_xaxis, y_axis)
+def get_non_rotated_screen(origin,  zvec,  rot0_xaxis, y_axis=None):
+    plane=Plane(origin,  normal=zvec)
+    screen=Screen(plane, origin,  rot0_xaxis, y_axis)
     return (screen)
         
-def get_rotation(screen, vec):
-    x = copy.copy(vec)
-    x.add(screen.x.org)
-    xx, xy=screen.point2D (x)
-    angle = math.atan2(xy,  xx)
-    return angle
-
-def get_x(screen, rotation):
-    p = rotate2d (rotation,  1,  0)
-    # p is now a 2D tuple
-    p = screen.point(p)
-    # p is now a 3D point in space
-    p.sub(screen.x.org)
-    # p is now a 1 unit relative vector
-    return p
-
-def euler_angles(x, z):
-    # cos (beta) = z.z
-    beta = math.acos(z.z)
-    sinbeta = math.sqrt(1-z.z*z.z)
-    if abs(sinbeta) > .0001:       # Not a special case of overlapping z vectors
-        alpha = math.acos(z.y / sinbeta)
-        y = z.cross_product(x)
-        gamma = math.acos(-y.z / sinbeta)
-        logger.log(2, "euler angles for x (%s) y(%s) and z(%s) are %g,%g,%g",
-                str(x), str(y), str(z), alpha, beta, gamma)
-
-    # A second way to compute:
-    #beta = math.acos(z.dot_product*Vector(0,0,1))
-        nodes_line = z.cross_product (Vector(0,0,1))
-        nodes_line.div(nodes_line.norm())
-        alpha2=math.acos(nodes_line.dot_product(Vector(1,0,0)))
-        gamma2=math.acos(nodes_line.dot_product(x))
-        logger.log(2, "Alternate Euler Angles alpha,gamma = %g,%g, nodes (%s)", alpha2, gamma2, str(nodes_line))
-        assert(abs(alpha-alpha2) < .0001)
-        assert(abs(gamma-gamma2) < .0001)
-        logger.log(2, "euler angles check out for alternate computation")
-    else:
-        alpha = math.acos(x.dot_product(Vector(1,0,0)))
-        logger.log(2, "euler angles in special case of overlapping z axes, alpha=%g", alpha)
-        gamma = 0
-        nodes_line=None
-
-    return alpha,beta,gamma,nodes_line
-
-# Given a vector in coordinate space defined by x,y and z vectors in the parent coordinate
-# space, what does that vector look like from the perspective of the parent coordinate space
-# Y vector is implied, given x and z
-def forward_translate3d(vec, x, z, origin):
-    #logger.log(2, "**** Forward translate 3d of %s into frame %s ****", str(vec), str(z))
-
-    # Get x & y in the alternate coordinate space
-    yvec = z.cross_product(x)
-    ret = copy.copy(yvec)
-    ret.mult(vec.y)
-    ret.add(origin)
-    xcomponent = copy.copy(x)
-    xcomponent.mult(vec.x)
-    ret.add(xcomponent)
-    zcomponent = copy.copy(z)
-    zcomponent.mult(vec.z)
-    ret.add(zcomponent)
-
-    #logger.log(2, "x,y,z with y vec %s = %s", str(yvec), str(ret))
-    vec.x = ret.x
-    vec.y = ret.y
-    vec.z = ret.z
-
-
-# Given a vector in parent(regular) coordinate space,
-# what does that vector look like from the perspective of the coordinate space
-# defined by x,y and z vectors. Y vector is implied, given x and z
-def reverse_translate3d(vec, x, z, origin):
-    #logger.log(2, "**** Reverse translate 3d of %s into frame %s ****", str(vec), str(z))
-    # Get x & y in the alternate coordinate space
-    yvec = z.cross_product(x)
-    sc = get_non_rotated_screen (origin, z, x, yvec)
-    r = Ray(org=vec,dir=z)
-    px,py = sc.point2D(r)
-
-    sc = get_non_rotated_screen (origin, x, z, yvec)
-    r = Ray(org=vec,dir=x)
-    pz,py2 = sc.point2D(r)
-    assert(abs(py-py2) < .0001)
-
-    vec.x = px
-    vec.y = py
-    vec.z = pz

@@ -13,9 +13,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-import time, math, copy, logging, functools
+import math, logging, functools
 
-import Common.Spatial as Spatial
+try:
+    import instruments.ai.Spatial as Spatial
+except:
+    import Common.Spatial
 
 logger=logging.getLogger(__name__)
 
@@ -33,6 +36,8 @@ METERS_FOOT = 0.3048
 FEET_METER = 1.0 / METERS_FOOT
 FEET_NM = FEET_METER / NAUT_MILES_PER_METER
 MM_INCHES = 25.4
+EARTH_RADIUS_M=6356752.0
+EARTH_RADIUS=EARTH_RADIUS_M * FEET_METER
 
 def read_cont_expr (first_args, lines):
     ret = None
@@ -106,7 +111,7 @@ def TrueHeading (course, periodic_logging=None, frequency=10):
     return ret
 
 def deg_min_to_radians(deg,minutes):
-    return ((d + m/60.0) * M_PI / 180.0)
+    return ((deg + minutes/60.0) * M_PI / 180.0)
 
 def get_intermediate_points(begin, end, degrees_per_hop):
     radians_per_hop = degrees_per_hop * M_PI / 180.0
@@ -119,9 +124,6 @@ def get_intermediate_points(begin, end, degrees_per_hop):
     route_vec.sub(org)
     total_time = route_vec.norm()
     cartinc1 = Spatial.Polar(0.0,0.0,1.0).to3(robot_coordinates=False)
-    incvec = Spatial.Polar(0.0,radians_per_hop,1.0).to3(robot_coordinates=False)
-    incvec.sub(cartinc1)
-    inc_time = incvec.norm()
 
     ret = list()
     tm = 0.0
@@ -270,7 +272,7 @@ def CourseDeviation(pos, course, rel_lng = 0):
 
     return (side, forward, heading, heading_to_dest)
 
-def CourseHeading(pos, course, turn_radius, periodic_logging=None, frequency=10):
+def CourseHeading(pos, course, turn_radius, smooth_radius, periodic_logging=None, frequency=10):
     side, forward, course_heading, heading_to_dest = CourseDeviation(pos, course)
     if abs(side) > turn_radius:
         diff = heading_to_dest - course_heading
@@ -283,22 +285,22 @@ def CourseHeading(pos, course, turn_radius, periodic_logging=None, frequency=10)
         else:
             intercept_heading = course_heading - 90
     else:
-        d1 = turn_radius - abs(side)
-        # cos(a1) = d1 / turn_radius
-        a1 = math.acos (d1 / turn_radius) * DEG_RAD
+        d1 = smooth_radius - abs(side)
+        # cos(a1) = d1 / smooth_radius
+        a1 = math.acos (d1 / smooth_radius) * DEG_RAD
         if side > 0:
             intercept_heading = course_heading - a1
         else:
             intercept_heading = course_heading + a1
-        # Example 1: course_heading = 0, side = .1, turn_radius = .5
+        # Example 1: course_heading = 0, side = .1, smooth_radius = .5
         #   d1 = .4
         #   a1 = acos (.4 / .5) = 37 degrees
         #   ih = -37
-        # Example 2: course_heading = 0, side = 0, turn_radius = .5
+        # Example 2: course_heading = 0, side = 0, smooth_radius = .5
         #   d1 = .5
         #   a1 = acos (.5 / .5) = 0 degrees
         #   ih = 0
-        # Example 3: course_heading = 0, side = -.1, turn_radius = .5
+        # Example 3: course_heading = 0, side = -.1, smooth_radius = .5
         #   d1 = .4
         #   a1 = acos (.4 / .5) = 37 degrees
         #   ih = 37
@@ -328,3 +330,34 @@ def VORDME(pos, course_or_pos):
     elif bearing < -180:
         bearing += 360
     return bearing,dist,course_heading,rel_lng
+
+FOFY=1
+FOFX=0
+
+def get_line(points, fofwhat=FOFX):
+    if fofwhat==FOFX:
+        divi = 0
+        numi = 1
+    else:
+        divi = 1
+        numi = 0
+    div = (points[1][divi] - points[0][divi])
+    if div == 0:
+        slope = math.inf
+        intercept = 0
+    else:
+        slope = (points[1][numi] - points[0][numi]) / div
+        # f(x) = slope * x + intercept
+        # points[0][numi] = slope * points[0][divi] + intercept
+        # points[0][numi] - intercept = slope * points[0][divi]
+        #  - intercept = slope * points[0][divi] - points[0][numi]
+        #  intercept = -slope * points[0][divi] + points[0][numi]
+        intercept = points[0][numi] - slope*points[0][divi]
+    return (slope,intercept)
+
+def F(var, function):
+    slope,intercept = function
+    if slope == math.inf:
+        return math.inf
+    else:
+        return slope * var + intercept

@@ -55,8 +55,8 @@ class XplaneControl:
         override_joystick = self.dref_struct_preamble + self.dref_struct_body.pack(1.0, b"sim/operation/override/override_joystick")
         self.sock.sendto (override_joystick, (self.xplane_host, self.xplane_port))
 
-        override_throttle = self.dref_struct_preamble + self.dref_struct_body.pack(1.0, b"sim/operation/override/override_throttles")
-        self.sock.sendto (override_throttle, (self.xplane_host, self.xplane_port))
+        #override_throttle = self.dref_struct_preamble + self.dref_struct_body.pack(1.0, b"sim/operation/override/override_throttles")
+        #self.sock.sendto (override_throttle, (self.xplane_host, self.xplane_port))
 
         override_gearbrake = self.dref_struct_preamble + self.dref_struct_body.pack(1.0, b"sim/operation/override/override_gearbrake")
         self.sock.sendto (override_gearbrake, (self.xplane_host, self.xplane_port))
@@ -141,6 +141,11 @@ class XplaneControl:
     def initialize(self, filelines):
         self.servo_range_size = self.ServoRange[1] - self.ServoRange[0]
         return
+
+    def SetEngagedState(self, engage):
+        override_joystick = self.dref_struct_preamble + self.dref_struct_body.pack(
+            1.0 if engage else 0.0, b"sim/operation/override/override_joystick")
+        self.sock.sendto (override_joystick, (self.xplane_host, self.xplane_port))
 
 class XplaneSensors:
     def __init__(self):
@@ -358,4 +363,7 @@ class XplaneSensors:
         pass
 
     def FlightMode (self, mode, vertical=True):
+        pass
+
+    def WaitSensorsGreen(self):
         pass
