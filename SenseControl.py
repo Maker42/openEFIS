@@ -16,6 +16,9 @@
 import time, math, logging
 
 from MicroServerComs import MicroServerComs
+from PubSub import assign_all_ports
+
+import yaml
 
 logger=logging.getLogger(__name__)
 
@@ -83,12 +86,20 @@ class Control(MicroServerComs):
 
 
 class Sensors(MicroServerComs):
-    def __init__(self, pubsub_cfg=None):
-        MicroServerComs.__init__(self, "Autopilot", config=pubsub_cfg)
+    def __init__(self, pubsub_cfg, starting_port):
+        if isinstance(pubsub_cfg, str):
+            with open (pubsub_cfg, 'r') as yml:
+                cfg = yaml.load (yml)
+                yml.close()
+        else:
+            cfg = pubsub_cfg
+        assign_all_ports (cfg, starting_port)
+        MicroServerComs.__init__(self, "Autopilot", config=cfg)
         self.magnetic_variation = None
-        self._known_altitude = KnownAltitude()
-        self._flight_mode = FlightModeSource()
-        self._wind_report = WindsAloftReport()
+        self._known_altitude = KnownAltitude(cfg)
+        self._flight_mode = FlightModeSource(cfg)
+        self._wind_report = WindsAloftReport(cfg)
+        self._given_barometer = GivenBarometer(cfg)
         self.altitude = None
         self.airspeed = None
         self.heading = None
@@ -105,8 +116,9 @@ class Sensors(MicroServerComs):
         self.gps_ground_speed = None
         self.gps_ground_track = None
         self.gps_signal_quality = None
+        self.last_update_time = 0
 
-    def initialize(self, alt, wind):
+    def initialize(self, alt=None, wind=None):
         if alt is not None:
             self.KnownAltitude (alt)
         self.wind_report = wind
@@ -116,6 +128,9 @@ class Sensors(MicroServerComs):
 
     def KnownAltitude(self, alt):
         self._known_altitude.send(alt)
+
+    def SendBarometer(self, b):
+        self._given_barometer.send (b)
 
     def WindsAloftReport(self, lat, lng, altitude, timestamp, direction, speed):
         self._wind_report.send (lat, lng, altitude, timestamp, direction, speed)
@@ -166,8 +181,9 @@ class Sensors(MicroServerComs):
 
     def TrueHeading(self):
         self.listen (timeout=0, loop=False)
+        # TODO: compute magnetic_variation using geomag
         if self.magnetic_variation is not None:
-            return self.heading - self.magnetic_variation
+            return self.heading + self.magnetic_variation
         else:
             return self.heading
 
@@ -221,9 +237,14 @@ class Sensors(MicroServerComs):
         return
 
     def WaitSensorsGreen(self):
-        while self.gps_ground_speed is None or \
+        while not self.Ready():
+            time.sleep (.1)
+
+    def Ready(self):
+        self.listen (timeout=0, loop=False)
+        return not (
                 self.altitude is None or \
-                self.airspeed is None or \
+                #self.airspeed is None or \
                 self.heading is None or \
                 self.roll is None or \
                 self.pitch is None or \
@@ -231,24 +252,22 @@ class Sensors(MicroServerComs):
                 self.turn_rate is None or \
                 self.pitch_rate is None or \
                 self.roll_rate is None or \
-                self.climb_rate is None:
-            self.listen (timeout=0, loop=False)
-            time.sleep (.1)
+                self.climb_rate is None)
 
 class KnownAltitude(MicroServerComs):
-    def __init__(self):
+    def __init__(self, cfg):
         self.known_altitude = None
-        MicroServerComs.__init__(self, "KnownAltitude", channel='knownaltitude')
+        MicroServerComs.__init__(self, "KnownAltitude", channel='knownaltitude', config=cfg)
 
     def send(self, alt):
         self.known_altitude = alt
         self.publish()
 
 class FlightModeSource(MicroServerComs):
-    def __init__(self):
+    def __init__(self, cfg):
         self.flight_mode = None
         self.vertical = None
-        MicroServerComs.__init__(self, "FlightModeSource", channel='flightmode')
+        MicroServerComs.__init__(self, "FlightModeSource", channel='flightmode', config=cfg)
 
     def send(self, m, vertical):
         self.flight_mode = bytes(m, 'ascii')
@@ -256,8 +275,8 @@ class FlightModeSource(MicroServerComs):
         self.publish()
 
 class WindsAloftReport(MicroServerComs):
-    def __init__(self):
-        MicroServerComs.__init__(self, "WindsAloftReport", channel='windsaloftreport')
+    def __init__(self, cfg):
+        MicroServerComs.__init__(self, "WindsAloftReport", channel='windsaloftreport', config=cfg)
 
     def send (self, lat, lng, altitude, timestamp, direction, speed):
         self.wa_lat = lat
@@ -267,6 +286,16 @@ class WindsAloftReport(MicroServerComs):
         self.wa_heading = direction
         self.wa_speed = speed
         self.publish()
+
+class GivenBarometer(MicroServerComs):
+    def __init__(self, cfg=None):
+        self.given_barometer = None
+        MicroServerComs.__init__(self, "GivenBarometer", channel='givenbarometer', config=cfg)
+
+    def send(self, b):
+        self.given_barometer = b
+        self.publish()
+
 
 def look_up(keyin, lookup_table, continuous=False, reverse=False):
     last_keypoint = None

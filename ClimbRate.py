@@ -38,14 +38,13 @@ class ClimbRate(MicroServerComs):
                 altdiff = self.altitude_computed - self.last_altitude
                 current_alt_rate = altdiff / timediff
                 self.climb_rate = util.LowPassFilter (current_alt_rate, self._raw_alt_rate)
-                self.climb_rate = int(round(self.climb_rate))
                 if self.climb_rate_estimate is not None:
                     variance = abs(self.climb_rate - self.climb_rate_estimate)
                     self.climb_rate_confidence = 10.0 - variance * self.confidence_multiplier
                 else:
                     self.climb_rate_confidence = 9.0
                 self.publish ()
-                print ("ClimbRate: %d/%d => %d(%g)"%(self.altitude_computed, altdiff,
+                print ("ClimbRate: %d/%d => %g(%g)"%(self.altitude_computed, altdiff,
                     self.climb_rate, self.climb_rate_confidence))
             self.last_altitude = self.altitude_computed
             self.last_time = self.timestamp

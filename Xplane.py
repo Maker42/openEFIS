@@ -269,7 +269,7 @@ class XplaneSensors:
     def MagneticDeclination(self):
         self.ProcessIncoming()
         assert(self.sensor_suite[12][1] == "MagneticDeclination")
-        return self.sensor_suite[12][0]
+        return -self.sensor_suite[12][0]
 
     def Time(self):
         self.ProcessIncoming()
@@ -367,3 +367,6 @@ class XplaneSensors:
 
     def WaitSensorsGreen(self):
         pass
+    
+    def Ready(self):
+        return self.sensor_suite[14][0] != 0

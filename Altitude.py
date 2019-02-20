@@ -27,14 +27,14 @@ class Altitude(MicroServerComs):
     def updated(self, channel):
         if channel == 'AltitudeComputed':
             self.timestamp = self.AltitudeComputed_updated
-            self.altitude = int(round(self.altitude_computed))
+            self.altitude = self.altitude_computed
             if self.gps_altitude is not None:
                 variance = abs(self.altitude - self.gps_altitude)
                 self.altitude_confidence = 10.0 - variance * self.confidence_multiplier
             else:
                 self.altitude_confidence = 9.0
             self.publish ()
-            print ("Altitude: %d => %d(%g)"%(self.altitude_computed, self.altitude, self.altitude_confidence))
+            print ("Altitude: %g => %g(%g)"%(self.altitude_computed, self.altitude, self.altitude_confidence))
 
 
 if __name__ == "__main__":

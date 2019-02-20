@@ -81,8 +81,9 @@ class MicroServerComs:
                                     self.pubchannel = socket.socket(type=socket.SOCK_DGRAM)
                                 else:
                                     self.pubchannel = socket.socket(type=socket.SOCK_STREAM)
+                                self.pubchannel.bind (('',port-1000))
                                 self.pubchannel.connect ((addr,port))
-                                #print ("Channel %s connecting to %s:%d"%(self.channel, addr, port))
+                                print ("Channel %s connecting to %s:%d"%(self.channel, addr, port))
             else:
                 if subs_cfg is not None:
                     for pipe in subs_cfg:
@@ -95,7 +96,11 @@ class MicroServerComs:
                                     subchannel = socket.socket(type=socket.SOCK_DGRAM)
                                 else:
                                     subchannel = socket.socket(type=socket.SOCK_STREAM)
-                                subchannel.bind ((addr,port))
+                                try:
+                                    subchannel.bind ((addr,port))
+                                    print ("%s/%s bound to %s:%d"%(self.channel,self.function, addr,port))
+                                except Exception as e:
+                                    print ("Error: cannot bind %s/%s socket to %s,%d: %s"%(self.channel,self.function, addr,port,str(e)))
                                 subchannel.settimeout (timeout)
                                 self.subchannels[subchannel.fileno()] = ((subchannel,self.channel,chname
                                                                           ,chcfg['output_values']
@@ -182,7 +187,10 @@ class MicroServerComs:
                 print ("Struct packing error %s: args %s"%(str(e), str(pack_args)))
                 raise
             #if debug: print ("%s connected sends %s"%(self.function, str(message)))
-            self.pubchannel.sendall (message)
+            try:
+                self.pubchannel.sendall (message)
+            except:
+                pass
             if debug:
                 print ("External publish %s to function %s, file %d"%(self.output_values, self.function,
                         self.pubchannel.fileno()))

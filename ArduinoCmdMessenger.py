@@ -107,6 +107,7 @@ class ArduinoCmdMessenger:
 
     def read_command(self, timeout=1.0):
         starttime = time.time()
+        self.device.timeout = timeout
         while True:
             recv = self.device.read()
             try:

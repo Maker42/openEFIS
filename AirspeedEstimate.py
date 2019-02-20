@@ -30,10 +30,9 @@ class AirspeedEstimate(MicroServerComs):
                             self.cas2tas is not None:
 
                 self.airspeed_estimate = self.estimated_tas / self.cas2tas
-                self.airspeed_estimate = int(round(self.airspeed_estimate))
                 self.publish ()
 
-                print ("AirspeedEstimate: %d"%self.airspeed_estimate)
+                print ("AirspeedEstimate: %g"%self.airspeed_estimate)
 
 if __name__ == "__main__":
     ae = AirspeedEstimate()

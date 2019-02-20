@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (C) 2018  Garrett Herschleb
+# Copyright (C) 2018-2019  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -43,10 +43,7 @@ def SELECTED_AIRSPEED_changed(v):
     craft.DesiredAirSpeed = v
 
 def SELECTED_HEADING_changed(v):
-    # true heading + magnetic declination = compass heading
-    # true heading = compass heading - magnetic declination
-    global magnetic_declination_db
-    craft.DesiredTrueHeading = v + magnetic_declination_db.value
+    craft.DesiredTrueHeading = v + craft.Sensors().MagneticDeclination()
 
 def AP_ON_changed(v):
     craft.SetServoEngagedState(v)
@@ -143,11 +140,10 @@ if '__main__' == __name__:
 fms_thread = None
 craft = None
 run_fms = True
-magnetic_declination_db = None
 send_back_sensors = True
 
 def start(airplane_config, snd_bk_snsrs=True):
-    global fms_thread, craft, magnetic_declination_db, send_back_sensors
+    global fms_thread, craft, send_back_sensors
     send_back_sensors = snd_bk_snsrs
     rcfg = open (airplane_config,  'r')
     rlines = rcfg.readlines()
@@ -196,7 +192,6 @@ def start(airplane_config, snd_bk_snsrs=True):
     selected_climb_rate_db.value =  500
     selected_climb_rate = selected_climb_rate_db.value
     selected_climb_rate_db.valueChanged[int].connect(SELECTED_CLIMB_RATE_changed)
-    magnetic_declination_db = fix.db.get_item(Globals.MAGNETIC_DECLINATION_KEY)
     ap_on_db = fix.db.get_item(Globals.AP_ON_KEY, True)
     ap_on_db.dtype = 'bool'
     fd_on_db = fix.db.get_item(Globals.FD_ON_KEY, True)
@@ -236,10 +231,52 @@ def start(airplane_config, snd_bk_snsrs=True):
     waypoints, WP_altitudes = ReadWaypoints()
     ConnectWaypoints()
 
+    fms_thread = threading.Thread(target=thread_run, args=(
+                    selected_altitude
+                   ,selected_airspeed
+                   ,selected_heading
+                   ,selected_climb_rate
+                   ,hnav_mode
+                   ,vnav_mode
+                   ,altitude_source
+                   ,start_strategy
+                   ,waypoints
+                   ,WP_altitudes
+                   ,selected_turn_rate
+                   ,selected_pitch
+                   ,selected_glideslope))
+    fms_thread.start()
+
+def stop():
+    global run_fms, fms_thread
+    run_fms = False
+    fms_thread.join()
+
+def thread_run( selected_altitude
+               ,selected_airspeed
+               ,selected_heading
+               ,selected_climb_rate
+               ,hnav_mode
+               ,vnav_mode
+               ,altitude_source
+               ,start_strategy
+               ,waypoints
+               ,WP_altitudes
+               ,selected_turn_rate
+               ,selected_pitch
+               ,selected_glideslope):
+    global craft, run_fms, send_back_sensors, wpchanged_time
+    pitchdb = fix.db.get_item(Globals.FD_PITCH_KEY)
+    rolldb = fix.db.get_item(Globals.FD_ROLL_KEY)
+    sensors = craft.Sensors()
+    while not sensors.Ready():
+        sensors.SendBarometer (fix.db.get_item("BARO").value)
+        print ("Not ready. Barometer %g"%(fix.db.get_item("BARO").value))
+        time.sleep(1)
     craft.initialize_input(
                           selected_altitude
                          ,selected_airspeed
-                         ,selected_heading - magnetic_declination_db.value
+                         ,selected_heading + craft.Sensors().MagneticDeclination()
                          ,selected_climb_rate
                          ,hnav_mode
                          ,vnav_mode
@@ -251,19 +288,6 @@ def start(airplane_config, snd_bk_snsrs=True):
                          ,selected_pitch
                          ,selected_glideslope)
 
-    fms_thread = threading.Thread(target=thread_run)
-    fms_thread.start()
-
-def stop():
-    global run_fms, fms_thread
-    run_fms = False
-    fms_thread.join()
-
-def thread_run():
-    global craft, run_fms, send_back_sensors, wpchanged_time
-    pitchdb = fix.db.get_item(Globals.FD_PITCH_KEY)
-    rolldb = fix.db.get_item(Globals.FD_ROLL_KEY)
-    sensors = craft.Sensors()
     while run_fms:
         attitude = craft.Update()
         if isinstance(attitude,tuple):
@@ -279,17 +303,26 @@ def thread_run():
             craft.SetWaypointNumber(0)
             wpchanged_time = None
 
+BARO_UPDATE_PERIOD=1.0
+last_baro_time = time.time()-BARO_UPDATE_PERIOD
 
 def sensors_to_fix(sensors):
+    global last_baro_time, givenbarometer
     fix.db.get_item("PITCH").value = sensors.Pitch()
     fix.db.get_item("ROLL").value = sensors.Roll()
     fix.db.get_item("YAW").value = sensors.Yaw()
     lng,lat = sensors.Position()
-    fix.db.get_item("LAT").value = lat
-    fix.db.get_item("LONG").value = lng
-    fix.db.get_item("TRACK").value = sensors.GroundTrack()
-    fix.db.get_item("GS").value = sensors.GroundSpeed()
+    if lng is not None:
+        fix.db.get_item("LAT").value = lat
+        fix.db.get_item("LONG").value = lng
+        fix.db.get_item("TRACK").value = sensors.GroundTrack()
+        fix.db.get_item("GS").value = sensors.GroundSpeed()
     fix.db.get_item("ALT").value = sensors.Altitude()
-    fix.db.get_item("IAS").value = sensors.AirSpeed()
+    airspeed = sensors.AirSpeed()
+    if airspeed is not None:
+        fix.db.get_item("IAS").value = airspeed
     fix.db.get_item("VS").value = sensors.ClimbRate()
     fix.db.get_item("HEAD").value = sensors.Heading()
+    if last_baro_time+BARO_UPDATE_PERIOD < time.time():
+        last_baro_time = time.time()
+        sensors.SendBarometer (fix.db.get_item("BARO").value)

@@ -32,7 +32,6 @@ class ClimbRateEstimate(MicroServerComs):
             altdiff = self.gps_altitude - self.last_altitude
             current_alt_rate = altdiff / timediff
             self.climb_rate_estimate = util.LowPassFilter (current_alt_rate, self._raw_alt_rate)
-            self.climb_rate_estimate = int(round(self.climb_rate_estimate))
             self.publish ()
             print ("ClimbRateEstimate: %d/%g => %g"%(altdiff, timediff, self.climb_rate_estimate))
         self.last_time = self.gps_utc

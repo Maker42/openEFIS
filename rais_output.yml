@@ -3,11 +3,9 @@ givenbarometer:
       - given_barometer
   format: f
   pubs:
-  - {addr: localhost, port: 49100, protocol: udp, function: GivenBarometer}
+  - {addr: localhost, protocol: udp, function: GivenBarometer}
   subs:
-  # Here we have to list the publisher,
-  # and all subscribers in all of the multiple sensor pipeline domains.
-  - {addr: localhost, port: 49101, protocol: udp, function: PressureFactors}
+  - {addr: localhost, protocol: udp, function: BaroDistributor}
 
 
 #
@@ -21,11 +19,11 @@ Yaw:
         - yaw_confidence
     format: dff
     pubs:
-      - {addr: localhost, port: 48510, protocol: udp, function: Yaw}
+      - {addr: localhost, protocol: udp, function: Yaw}
     subs:
-      - {addr: localhost, port: 48511, protocol: udp, function: Display}
-      - {addr: localhost, port: 48512, protocol: udp, function: Autopilot}
-      - {addr: localhost, port: 48513, protocol: udp, function: EventDB}
+      - {addr: localhost, protocol: udp, function: Display}
+      - {addr: localhost, protocol: udp, function: Autopilot}
+      - {addr: localhost, protocol: udp, function: EventDB}
 
 Pitch:
     output_values:
@@ -34,11 +32,11 @@ Pitch:
         - pitch_confidence
     format: dff
     pubs:
-      - {addr: localhost, port: 48520, protocol: udp, function: Pitch}
+      - {addr: localhost, protocol: udp, function: Pitch}
     subs:
-      - {addr: localhost, port: 48521, protocol: udp, function: Display}
-      - {addr: localhost, port: 48522, protocol: udp, function: Autopilot}
-      - {addr: localhost, port: 48523, protocol: udp, function: EventDB}
+      - {addr: localhost, protocol: udp, function: Display}
+      - {addr: localhost, protocol: udp, function: Autopilot}
+      - {addr: localhost, protocol: udp, function: EventDB}
 
 
 Roll:
@@ -48,25 +46,24 @@ Roll:
         - roll_confidence
     format: dff
     pubs:
-      - {addr: localhost, port: 48530, protocol: udp, function: Roll}
+      - {addr: localhost, protocol: udp, function: Roll}
     subs:
-      - {addr: localhost, port: 48531, protocol: udp, function: Display}
-      - {addr: localhost, port: 48532, protocol: udp, function: Autopilot}
-      - {addr: localhost, port: 48533, protocol: udp, function: EventDB}
+      - {addr: localhost, protocol: udp, function: Display}
+      - {addr: localhost, protocol: udp, function: Autopilot}
+      - {addr: localhost, protocol: udp, function: EventDB}
 
 Heading:
     output_values:
         - timestamp
         - heading
-        - gps_magnetic_variation
         - heading_confidence
-    format: diff
+    format: dff
     pubs:
-      - {addr: localhost, port: 48540, protocol: udp, function: Heading}
+      - {addr: localhost, protocol: udp, function: Heading}
     subs:
-      - {addr: localhost, port: 48541, protocol: udp, function: Display}
-      - {addr: localhost, port: 48542, protocol: udp, function: Autopilot}
-      - {addr: localhost, port: 48543, protocol: udp, function: EventDB}
+      - {addr: localhost, protocol: udp, function: Display}
+      - {addr: localhost, protocol: udp, function: Autopilot}
+      - {addr: localhost, protocol: udp, function: EventDB}
 
 TurnRate:
     output_values:
@@ -75,11 +72,11 @@ TurnRate:
         - turn_rate_confidence
     format: dff
     pubs:
-      - {addr: localhost, port: 48550, protocol: udp, function: TurnRate}
+      - {addr: localhost, protocol: udp, function: TurnRate}
     subs:
-      - {addr: localhost, port: 48551, protocol: udp, function: Display}
-      - {addr: localhost, port: 48552, protocol: udp, function: Autopilot}
-      - {addr: localhost, port: 48553, protocol: udp, function: EventDB}
+      - {addr: localhost, protocol: udp, function: Display}
+      - {addr: localhost, protocol: udp, function: Autopilot}
+      - {addr: localhost, protocol: udp, function: EventDB}
 
 RollRate:
     output_values:
@@ -88,11 +85,11 @@ RollRate:
         - roll_rate_confidence
     format: dff
     pubs:
-      - {addr: localhost, port: 48560, protocol: udp, function: RollRate}
+      - {addr: localhost, protocol: udp, function: RollRate}
     subs:
-      - {addr: localhost, port: 48561, protocol: udp, function: Display}
-      - {addr: localhost, port: 48562, protocol: udp, function: Autopilot}
-      - {addr: localhost, port: 48563, protocol: udp, function: EventDB}
+      - {addr: localhost, protocol: udp, function: Display}
+      - {addr: localhost, protocol: udp, function: Autopilot}
+      - {addr: localhost, protocol: udp, function: EventDB}
 
 Airspeed:
     output_values:
@@ -100,39 +97,39 @@ Airspeed:
         - airspeed_is_estimated
         - airspeed
         - airspeed_confidence
-    format: diif
+    format: diff
     pubs:
-      - {addr: localhost, port: 48570, protocol: udp, function: Airspeed}
+      - {addr: localhost, protocol: udp, function: Airspeed}
     subs:
-      - {addr: localhost, port: 48571, protocol: udp, function: Display}
-      - {addr: localhost, port: 48572, protocol: udp, function: Autopilot}
-      - {addr: localhost, port: 48573, protocol: udp, function: EventDB}
+      - {addr: localhost, protocol: udp, function: Display}
+      - {addr: localhost, protocol: udp, function: Autopilot}
+      - {addr: localhost, protocol: udp, function: EventDB}
 
 ClimbRate:
     output_values:
         - timestamp
         - climb_rate
         - climb_rate_confidence
-    format: dif
+    format: dff
     pubs:
-      - {addr: localhost, port: 48580, protocol: udp, function: ClimbRate}
+      - {addr: localhost, protocol: udp, function: ClimbRate}
     subs:
-      - {addr: localhost, port: 48581, protocol: udp, function: Display}
-      - {addr: localhost, port: 48582, protocol: udp, function: Autopilot}
-      - {addr: localhost, port: 48583, protocol: udp, function: EventDB}
+      - {addr: localhost, protocol: udp, function: Display}
+      - {addr: localhost, protocol: udp, function: Autopilot}
+      - {addr: localhost, protocol: udp, function: EventDB}
 
 Altitude:
     output_values:
         - timestamp
         - altitude
         - altitude_confidence
-    format: dif
+    format: dff
     pubs:
-      - {addr: localhost, port: 48590, protocol: udp, function: Altitude}
+      - {addr: localhost, protocol: udp, function: Altitude}
     subs:
-      - {addr: localhost, port: 48591, protocol: udp, function: Display}
-      - {addr: localhost, port: 48592, protocol: udp, function: Autopilot}
-      - {addr: localhost, port: 48593, protocol: udp, function: EventDB}
+      - {addr: localhost, protocol: udp, function: Display}
+      - {addr: localhost, protocol: udp, function: Autopilot}
+      - {addr: localhost, protocol: udp, function: EventDB}
 
 GroundVector:
     output_values:
@@ -142,13 +139,13 @@ GroundVector:
         - gps_ground_speed
         - gps_ground_track
         - ground_vector_confidence
-    format: dddiif
+    format: dddddf
     pubs:
-      - {addr: localhost, port: 48600, protocol: udp, function: GroundVector}
+      - {addr: localhost, protocol: udp, function: GroundVector}
     subs:
-      - {addr: localhost, port: 48601, protocol: udp, function: Display}
-      - {addr: localhost, port: 48602, protocol: udp, function: Autopilot}
-      - {addr: localhost, port: 48603, protocol: udp, function: EventDB}
+      - {addr: localhost, protocol: udp, function: Display}
+      - {addr: localhost, protocol: udp, function: Autopilot}
+      - {addr: localhost, protocol: udp, function: EventDB}
 
 PitchRate:
     output_values:
@@ -157,11 +154,11 @@ PitchRate:
         - pitch_rate_confidence
     format: dff
     pubs:
-      - {addr: localhost, port: 48610, protocol: udp, function: PitchRate}
+      - {addr: localhost, protocol: udp, function: PitchRate}
     subs:
-      - {addr: localhost, port: 48611, protocol: udp, function: Display}
-      - {addr: localhost, port: 48612, protocol: udp, function: Autopilot}
-      - {addr: localhost, port: 48613, protocol: udp, function: EventDB}
+      - {addr: localhost, protocol: udp, function: Display}
+      - {addr: localhost, protocol: udp, function: Autopilot}
+      - {addr: localhost, protocol: udp, function: EventDB}
 
 Autopilot:
     output_values:

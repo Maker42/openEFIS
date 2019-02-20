@@ -293,6 +293,7 @@ class FlightControl(FileConfig.FileConfig):
             if self._climbPitchPID.GetMode() != PID.AUTOMATIC:
                 self._climbPitchPID.SetMode (PID.AUTOMATIC,
                                             self.CurrentClimbRate, self._sensors.Pitch())
+            self._set_pitch_pid_limits(self.PitchPIDLimits, self._climbPitchPID)
             # Figure out how high or low are we
             remaining_course = [self.CurrentPosition, self.DesiredCourse[1]]
             _,remaining_distance,self._rel_lng = util.TrueHeadingAndDistance(remaining_course,
@@ -405,7 +406,7 @@ class FlightControl(FileConfig.FileConfig):
             return absolute_limits
         roll = abs(self._sensors.Roll())
         max_pitch = util.rate_curve(roll, absolute_limits)
-        return -max_pitch,max_pitch
+        return -absolute_limits[0][1],max_pitch
 
     def Stop(self):
         if self._throttle_control is not None:
@@ -762,6 +763,7 @@ class FlightControl(FileConfig.FileConfig):
         return self._VnavMode
 
     def setVnavMode(self, mode):
+        self.CurrentAltitude = self._sensors.Altitude()
         if mode != self._VnavMode:
             if mode == self.VNAV_MODE_LINEAR:
                 self.initiate_linear_descent()
@@ -775,6 +777,7 @@ class FlightControl(FileConfig.FileConfig):
 
     def setDesiredAltitude(self, a):
         self._DesiredAltitude = a
+        self.CurrentAltitude = self._sensors.Altitude()
         if self._VnavMode == self.VNAV_MODE_LINEAR:
             self.initiate_linear_descent()
         self._pitch_sign = (1 if self._DesiredAltitude > self.CurrentAltitude else -1)

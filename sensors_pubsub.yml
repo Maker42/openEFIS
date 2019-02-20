@@ -75,8 +75,7 @@ gpsfeed:
       - gps_ground_speed
       - gps_ground_track
       - gps_signal_quality
-      - gps_magnetic_variation
-  format: dddiiiif
+  format: dddiiii
   pubs:
   - {addr: 192.168.0.5, port: 49070, protocol: udp, function: GPSFeed}
   subs:
@@ -205,10 +204,9 @@ RollRateEstimate:
 
 HeadingTasEstimate:
     output_values:
-        - estimated_heading
+        - estimated_heading_true
         - estimated_tas
-        - gps_magnetic_variation
-    format: iif
+    format: ii
     pubs:
       - {protocol: internal, function: HeadingTasEstimate}
     subs:
@@ -239,7 +237,7 @@ AltitudeComputed:
 AirspeedEstimate:
     output_values:
         - airspeed_estimate
-    format: i
+    format: f
     pubs:
       - {protocol: internal, function: AirspeedEstimate}
     subs:
@@ -257,7 +255,7 @@ TrackRate:
 ClimbRateEstimate:
     output_values:
         - climb_rate_estimate
-    format: i
+    format: f
     pubs:
       - {protocol: internal, function: ClimbRateEstimate}
     subs:
@@ -329,9 +327,8 @@ Heading:
     output_values:
         - timestamp
         - heading
-        - gps_magnetic_variation
         - heading_confidence
-    format: diff
+    format: dff
     pubs:
       - {addr: localhost, port: 48040, protocol: udp, function: Heading}
     subs:
@@ -366,7 +363,7 @@ Airspeed:
         - airspeed_is_estimated
         - airspeed
         - airspeed_confidence
-    format: diif
+    format: diff
     pubs:
       - {addr: localhost, port: 48070, protocol: udp, function: Airspeed}
     subs:
@@ -378,7 +375,7 @@ ClimbRate:
         - timestamp
         - climb_rate
         - climb_rate_confidence
-    format: dif
+    format: dff
     pubs:
       - {addr: localhost, port: 48080, protocol: udp, function: ClimbRate}
     subs:
@@ -389,7 +386,7 @@ Altitude:
         - timestamp
         - altitude
         - altitude_confidence
-    format: dif
+    format: dff
     pubs:
       - {addr: localhost, port: 48090, protocol: udp, function: Altitude}
     subs:
@@ -426,7 +423,8 @@ Control:
     output_values:
         - channel
         - value
-    format: ii
+        - engaged
+    format: iii
     pubs:
       - {addr: localhost, port: 48120, protocol: udp, function: Control}
     subs:

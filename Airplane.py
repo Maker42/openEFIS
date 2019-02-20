@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018  Garrett Herschleb
+# Copyright (C) 2015-2019  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -264,7 +264,7 @@ class Airplane(FileConfig.FileConfig):
     def init_sensors(self, args, filelines):
         self._sensors = eval(' '.join(args[1:]))
         self._sensors.initialize(filelines)
-        self._sensors.WaitSensorsGreen()
+        #self._sensors.WaitSensorsGreen()
 
     def init_servo_control(self, args, filelines):
         self._servo_controller = eval(' '.join(args[1:]))
@@ -589,10 +589,13 @@ class Airplane(FileConfig.FileConfig):
             logger.error("Airplane crashed")
             if self._throttle_control is not None: self._throttle_control.Set(0)
             return -1
-        if not self._was_moving and self._sensors.GroundSpeed() > 10:
+        gs = self._sensors.GroundSpeed()
+        if gs is None:
+            gs = 0
+        if not self._was_moving and gs > 10:
             self._was_moving = True
         if self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN:
-            if self._sensors.AirSpeed() < 3:
+            if self._sensors.AirSpeed() < 10:
                 print ("Now ground mode")
                 self.ChangeMode(Globals.FLIGHT_MODE_GROUND)
             attitude = self._flight_control.Update()
@@ -604,7 +607,10 @@ class Airplane(FileConfig.FileConfig):
             return attitude
         elif self.CurrentFlightMode == Globals.FLIGHT_MODE_GROUND:
             if self._ground_control is not None: self._ground_control.Update()
-            if self._sensors.AirSpeed() > self.StallSpeed:
+            airspeed = self._sensors.AirSpeed()
+            if airspeed is None:
+                airspeed = 0
+            if airspeed > self.StallSpeed:
                 self.ChangeMode(Globals.FLIGHT_MODE_AIRBORN)
         elif self.CurrentFlightMode == Globals.FLIGHT_MODE_LANDING:
             if self._landing_control is not None: self._landing_control.Update()
@@ -754,4 +760,7 @@ class Airplane(FileConfig.FileConfig):
         return False
 
     def has_crashed(self):
-        return ((self._sensors.GroundSpeed() == 0) and (self._was_moving))
+        gs = self._sensors.GroundSpeed()
+        if gs is None:
+            gs = 0
+        return ((gs < 5) and (self._was_moving))

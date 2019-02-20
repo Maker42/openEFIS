@@ -27,7 +27,7 @@ class HeadingTasEstimate(MicroServerComs):
         self.gps_ground_track = None
         self.gps_ground_speed = None
         self.estimated_tas = None
-        self.estimated_heading = None
+        self.estimated_heading_true = None
         self.gps_magnetic_variation = None
         # TODO: publish confidence level based on recency and relevance of inputs
 
@@ -51,14 +51,14 @@ class HeadingTasEstimate(MicroServerComs):
             ground_vector.sub(wind_vector)       # ground vector now holds wind vector
             air_polar = Polar()
             air_polar.from3 (ground_vector, limit_phi=True, robot_coordinates=False)
-            self.estimated_heading = int(round(air_polar.theta * util.RAD_DEG))
+            self.estimated_heading_true = int(round(air_polar.theta * util.RAD_DEG))
             self.estimated_tas = int(round(air_polar.rad))
-            while self.estimated_heading < 0:
-                self.estimated_heading += 360
+            while self.estimated_heading_true < 0:
+                self.estimated_heading_true += 360
             self.publish ()
 
             print ("HeadingTasEstimate: %d at %d degrees"%(
-                self.estimated_tas, self.estimated_heading))
+                self.estimated_tas, self.estimated_heading_true))
 
 if __name__ == "__main__":
     hte = HeadingTasEstimate()

@@ -1,4 +1,5 @@
-# Copyright (C) 2018  Garrett Herschleb
+#!/usr/bin/env python3
+# Copyright (C) 2018-2019  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -40,21 +41,23 @@ def run_channel (*args, **kwargs):
                 usock = socket.socket (type=socket.SOCK_DGRAM)
                 try:
                     usock.bind(('',port))
+                    print ("%s/%s udp bound to %d"%(chname,pipe['function'], port))
                 except Exception as e:
                     raise RuntimeError ("port %d bind error %s"%(port, str(e)))
                 listeners[usock.fileno()] = (usock, protocol, 'p')
                 select_list.append (usock.fileno())
                 exception_list.append (usock.fileno())
-                print ("Created udp pub socket for %s"%pipe['function'])
+                #print ("Created udp pub socket for %s"%pipe['function'])
             elif protocol == 'tcp':
                 port = pipe['port']
                 tsock = socket.socket (type=socket.SOCK_STREAM)
                 tsock.bind(('',port))
+                print ("%s/%s listening to %d"%(chname,pipe['function'], port))
                 tsock.listen(10)
                 listeners[tsock.fileno()] = (tsock, 'tcplisten', 'p')
                 select_list.append (tsock.fileno())
                 exception_list.append (tsock.fileno())
-                print ("Created TCP pub listener socket for %s"%pipe['function'])
+                #print ("Created TCP pub listener socket for %s"%pipe['function'])
 
     if subs_cfg is not None:
         for pipe in subs_cfg:
@@ -63,8 +66,8 @@ def run_channel (*args, **kwargs):
                 port = pipe['port']
                 usock = socket.socket (type=socket.SOCK_DGRAM)
                 addr = pipe['addr']
-                #usock.bind(('',port-1000))
                 try:
+                    usock.bind ((addr,port-1000))
                     usock.connect((addr,port))
                 except Exception as e:
                     print ("Could not connect to %s:%d for channel %s, function %s"%(
@@ -72,7 +75,7 @@ def run_channel (*args, **kwargs):
                     continue
                 subs[usock.fileno()] = (usock, chname, pipe['function'])
                 exception_list.append (usock.fileno())
-                print ("Created UDP sub socket for %s"%pipe['function'])
+                print ("Created UDP sub socket connected to %s:%d for %s"%(addr, port, pipe['function']))
             elif protocol == 'tcp':
                 port = pipe['port']
                 tsock = socket.socket (type=socket.SOCK_STREAM)
@@ -121,19 +124,55 @@ def run_channel (*args, **kwargs):
                         pass
 
 
+def assign_ports(chcfg, portno):
+    pubs_cfg = chcfg['pubs']
+    subs_cfg = chcfg['subs']
+    if pubs_cfg is not None:
+        for pipe in pubs_cfg:
+            protocol = pipe['protocol']
+            if protocol == 'udp' or protocol == 'tcp':
+                if not 'port' in pipe:
+                    pipe['port'] = portno
+                    portno += 1
+    if subs_cfg is not None:
+        for pipe in subs_cfg:
+            protocol = pipe['protocol']
+            if protocol == 'udp' or protocol == 'tcp':
+                if not 'port' in pipe:
+                    pipe['port'] = portno
+                    portno += 1
+
+    return portno
+
 if __name__ == "__main__":
+    starting_port = 49010
     if len(sys.argv) > 1:
         cfg_file = sys.argv[1]
+        if len(sys.argv) > 2:
+            starting_port = int(sys.argv[2])
     else:
         cfg_file = CONFIG_FILE
     with open (cfg_file, 'r') as yml:
         config = yaml.load (yml)
         yml.close ()
         channels = list()
-        for chname,chcfg in config.items():
+        print ("Starting port: %d"%starting_port)
+        ckeys = [k for k in config.keys()]
+        ckeys.sort()
+        for chname in ckeys:
+            chcfg = config[chname]
+            starting_port = assign_ports(chcfg, starting_port)
             ch = threading.Thread (target=run_channel, args=(chcfg,chname))
             ch.start()
             print ("Created thread for %s"%chname)
             channels.append(ch)
+        print ("Final port: %d"%starting_port)
         for ch in channels:
             ch.join()
+
+def assign_all_ports (cfg, starting_port):
+    ckeys = [k for k in cfg.keys()]
+    ckeys.sort()
+    for chname in ckeys:
+        chcfg = cfg[chname]
+        starting_port = assign_ports(chcfg, starting_port)

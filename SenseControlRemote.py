@@ -32,6 +32,7 @@ import Common.util as util
 from NMEAParser import ParseNMEAStrings
 
 from MicroServerComs import MicroServerComs
+from PubSub import assign_all_ports
 
 logger=logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ arduino_messages = [
 ,"setup_digital_output"         # pin, initial_value
 ,"set_analog_output"            # pin, value
 ,"set_digital_output"           # pin, value
+,"save_configuration"           # nchans
 ]
 
 class SenseControlSlave(MicroServerComs):
@@ -60,6 +62,7 @@ class SenseControlSlave(MicroServerComs):
         self._config = config
         self._sensors = dict()
         sensor_chnum = 0
+        output_chnum = 0
         self._accelerometers = Accelerometers(pubsub_cfg)
         self._rotation = Rotation(pubsub_cfg)
         self._magnetic = Magnetic(pubsub_cfg)
@@ -67,6 +70,11 @@ class SenseControlSlave(MicroServerComs):
         self._temperature = Temperature(pubsub_cfg)
         self._gps = GPS(pubsub_cfg)
         self._calibrations = dict()
+        self.channel = 0
+        self.value = 0
+        self.engaged = 0
+        self.previous_engaged = 0
+        self.engage_channel = None
         for config_term,cfg in self._config.items():
             if config_term.startswith ('cal'):
                 self._calibrations.update (cfg)
@@ -91,10 +99,26 @@ class SenseControlSlave(MicroServerComs):
                         self.ProcessResponse(r)
                 self._sensors[sensor_chnum] = function
                 sensor_chnum += 1
+            elif cfg[0].startswith('output'):
+                function = cfg[1]
+                if cfg[0] == 'output_digital':
+                    resp = self._mainCmd.sendCmd ("setup_digital_output", [output_chnum] + cfg[1:])
+                    function = 'd'
+                elif cfg[0] == 'output_analog':
+                    resp = self._mainCmd.sendCmd ("setup_analog_output", [output_chnum] + cfg[1:])
+                    function = 'n'
+                if config_term == "engage":
+                    self.engage_channel = output_chnum
+                output_chnum += 1
+        self._mainCmd.sendCmd ("save_configuration", [sensor_chnum])
         MicroServerComs.__init__(self, "ControlSlave", config=pubsub_cfg)
 
     def update(self, channel):
         if channel == "Control":
+            if self.engaged != self.previous_engaged and self.engage_channel is not None:
+                chtype,pin = self._config[self.engage_channel]
+                self._mainCmd.sendCmd ("set_digital_output", pin, self.engaged)
+                self.previous_engaged = self.engaged
             if not self.channel in self._config:
                 raise RuntimeError ("Invalid channel name received: %s"%self.channel)
             chtype,pin = self._config[self.channel]
@@ -108,7 +132,7 @@ class SenseControlSlave(MicroServerComs):
     def ReadSensors(self):
         global rootlogger
         while True:
-            cmd = self._mainCmd.read_command (0)
+            cmd = self._mainCmd.read_command (0.01)
             if not self.ProcessResponse (cmd):
                 break
 
@@ -349,7 +373,6 @@ class GPS(MicroServerComs):
         self.gps_ground_speed = None
         self.gps_ground_track = None
         self.gps_signal_quality = None
-        self.gps_magnetic_variation = None
         self.HaveNewPosition = False
         MicroServerComs.__init__(self, "GPSFeed", channel='gpsfeed', config=pubsub_cfg)
 
@@ -360,15 +383,14 @@ class GPS(MicroServerComs):
                 self.gps_lat is not None:
             update_time_offset (self.gps_utc, ts)
             self.HaveNewPosition = False
-            print ("gps: %g,%g,%g,%d,%d,%d,%d,%g"%(
+            print ("gps: %g,%g,%g,%g,%g,%g,%d"%(
         self.gps_utc,
         self.gps_lat,
         self.gps_lng,
         self.gps_altitude,
         self.gps_ground_speed,
         self.gps_ground_track,
-        self.gps_signal_quality,
-        self.gps_magnetic_variation))
+        self.gps_signal_quality))
             self.publish()
 
 time_offset = 0
@@ -387,6 +409,8 @@ def make_timestamp (board_ts):
 if '__main__' == __name__:
     opt = argparse.ArgumentParser(description='Control/sensor slave process')
     opt.add_argument('serial_port', help = 'Serial port path of physical controller')
+    opt.add_argument('starting_port', type=int,
+            help='The port number to start with for serialized network port assignments')
     opt.add_argument('-c', '--config-file', default='sensors.yml', help='YAML config file for sensor / control board')
     opt.add_argument('-p', '--pubsub-config', default='sensors_pubsub.yml', help='YAML config file coms configuration')
     opt.add_argument('--log-prefix', default=None, help = 'Over-ride logging prefix')
@@ -441,9 +465,18 @@ if '__main__' == __name__:
         yml.close()
     with open (args.pubsub_config, 'r') as yml:
         pubsub_config = yaml.load(yml)
+        assign_all_ports (pubsub_config, args.starting_port)
         yml.close()
     slave = SenseControlSlave(command_channel, config, pubsub_config)
     while True:
-        slave.ReadSensors()
+        try:
+            slave.ReadSensors()
+        except Exception as e:
+            time.sleep(1)
+            try:
+                _main_port = serial.Serial(args.serial_port, 115200, timeout=0)
+                command_channel.StartComs (_main_port)
+            except:
+                raise RuntimeError("Cannot re-open control/sensor port %s"%args.serial_port)
+
         slave.listen (timeout=0, loop=False)
-        #time.sleep(.01)    On windows, the sleep is like minimum 300ms -- too long

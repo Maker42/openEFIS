@@ -1,4 +1,5 @@
-# Copyright (C) 2018  Garrett Herschleb
+#!/usr/bin/env python3
+# Copyright (C) 2018-2019  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -45,7 +46,7 @@ from ClimbRateEstimate import ClimbRateEstimate
 from PitchRate import PitchRate
 import InternalPublisher
 import MicroServerComs
-from PubSub import CONFIG_FILE
+from PubSub import CONFIG_FILE, assign_all_ports
 
 def run_service(so):
     so.listen()
@@ -53,6 +54,8 @@ def run_service(so):
 if __name__ == "__main__":
     opt = argparse.ArgumentParser(description=
             'Run the microservices necessary for a complete, self checking AHRS computation pipeline')
+    opt.add_argument('starting_port', type=int,
+            help='The port number to start with for serialized network port assignments')
     opt.add_argument('-p', '--pubsub-config', default=CONFIG_FILE,
             help='YAML config file coms configuration')
     opt.add_argument('-a', '--airspeed-config', default='airspeed_curve.yml',
@@ -67,6 +70,7 @@ if __name__ == "__main__":
 
     with open (args.pubsub_config, 'r') as yml:
         MicroServerComs._pubsub_config = yaml.load(yml)
+        assign_all_ports (MicroServerComs._pubsub_config, args.starting_port)
         yml.close()
     InternalPublisher.TheInternalPublisher = InternalPublisher.InternalPublisher(
             MicroServerComs._pubsub_config)
