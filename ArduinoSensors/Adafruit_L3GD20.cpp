@@ -35,8 +35,14 @@ Adafruit_L3GD20::Adafruit_L3GD20(void) {
 
 bool Adafruit_L3GD20::begin(l3gd20Range_t rng, byte addr)
 {
+    extern char output_line[];
   if (_cs == -1) {
+#ifdef CORE_TEENSY
+    Wire.begin(I2C_MASTER, 0x00, I2C_PINS_18_19, I2C_PULLUP_EXT, I2C_RATE_100);
+    Wire.setDefaultTimeout(1000);
+#else
     Wire.begin();
+#endif
   } else {
     pinMode(_cs, OUTPUT);
     pinMode(_clk, OUTPUT);
@@ -50,9 +56,16 @@ bool Adafruit_L3GD20::begin(l3gd20Range_t rng, byte addr)
 
   /* Make sure we have the correct chip ID since this checks
      for correct address and that the IC is properly connected */
-  uint8_t id;
+  uint8_t id = 0;
   if ((!read8(L3GD20_REGISTER_WHO_AM_I, &id)) || ((id != L3GD20_ID) && (id != L3GD20H_ID)))
   {
+    if (id == 0)
+    {
+        sprintf (output_line, "L3GD20 gyro: No response from ID register");
+    } else
+    {
+        sprintf (output_line, "L3GD20 gyro: Invalid response from ID register: %d", id);
+    }
     return false;
   }
 

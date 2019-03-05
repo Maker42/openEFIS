@@ -20,13 +20,6 @@
  #include "WProgram.h"
 #endif
 
-#ifdef __AVR_ATtiny85__
- #include "TinyWireM.h"
- #define Wire TinyWireM
-#else
- #include <Wire.h>
-#endif
-
 #include <math.h>
 #include <limits.h>
 
@@ -261,8 +254,14 @@ Adafruit_BMP085_Unified::Adafruit_BMP085_Unified(int32_t sensorID) {
 /**************************************************************************/
 bool Adafruit_BMP085_Unified::begin(bmp085_mode_t mode)
 {
+    extern char output_line[];
   // Enable I2C
+#ifdef CORE_TEENSY
+  Wire.begin(I2C_MASTER, 0x00, I2C_PINS_18_19, I2C_PULLUP_EXT, I2C_RATE_100);
+  Wire.setDefaultTimeout(1000);
+#else
   Wire.begin();
+#endif
 
   /* Mode boundary check */
   if ((mode > BMP085_MODE_ULTRAHIGHRES) || (mode < 0))
@@ -271,9 +270,17 @@ bool Adafruit_BMP085_Unified::begin(bmp085_mode_t mode)
   }
 
   /* Make sure we have the right device */
-  uint8_t id;
+  uint8_t id = 0;
   if ((!read8(BMP085_REGISTER_CHIPID, &id)) || (id != 0x55))
   {
+    if (id == 0)
+    {
+        sprintf (output_line, "No response from BMP85 whoami register");
+    } else
+    {
+        sprintf (output_line, "Invalid response from BMP85 whoami register: %d",
+                id);
+    }
     return false;
   }
 
@@ -282,7 +289,10 @@ bool Adafruit_BMP085_Unified::begin(bmp085_mode_t mode)
 
   /* Coefficients need to be read once */
   if (!readCoefficients())
+  {
+      sprintf (output_line, "BMP85: Failed to read coefficients");
       return false;
+  }
     
   return true;
 }
@@ -345,7 +355,7 @@ bool Adafruit_BMP085_Unified::getPressure(float *pressure)
 /**************************************************************************/
 bool Adafruit_BMP085_Unified::getTemperature(float *temp)
 {
-  int32_t UT, X1, X2, B5;     // following ds convention
+  int32_t UT, B5;     // following ds convention
   float t;
 
   if (!readRawTemperature(&UT))

@@ -1,4 +1,4 @@
-# Copyright (C) 2018  Garrett Herschleb
+# Copyright (C) 2018-2019  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -22,8 +22,7 @@ from MicroServerComs import MicroServerComs
 class AirspeedComputed(MicroServerComs):
     def __init__(self, airspeed_config):
         MicroServerComs.__init__(self, "AirspeedComputed")
-        self.static_pressure = None
-        self.pitot_pressure = None
+        self.pitot = None
         self.airspeed_computed = None
         self.ascurve = None
         if isinstance(airspeed_config,dict):
@@ -31,14 +30,13 @@ class AirspeedComputed(MicroServerComs):
 
     def updated(self, channel):
         if self.ascurve is not None:
-            if self.pitot_pressure > 0:
+            if self.pitot > 0:
                 # Only output if we have 2 valid pressures to compare
-                self.timestamp = self.pressuresensors_updated
-                pdiff = self.static_pressure - self.pitot_pressure
-                self.airspeed_computed = util.rate_curve (pdiff, self.ascurve)
-                self.airspeed_computed = int(round(self.airspeed_computed))
+                self.timestamp = self.pitotsensor_updated
+                self.airspeed_computed = util.rate_curve (self.pitot, self.ascurve)
+                self.airspeed_computed = self.airspeed_computed
                 self.publish ()
-                print ("AirspeedComputed: %d"%self.airspeed_computed)
+                print ("AirspeedComputed: %.2f ==> %.2f"%(self.pitot, self.airspeed_computed))
             else:
                 print ("AirspeedComputed: no pitot")
         else:

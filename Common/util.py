@@ -18,7 +18,7 @@ import math, logging, functools
 try:
     import instruments.ai.Spatial as Spatial
 except:
-    import Common.Spatial
+    import Common.Spatial as Spatial
 
 logger=logging.getLogger(__name__)
 

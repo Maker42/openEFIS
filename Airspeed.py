@@ -47,7 +47,7 @@ class Airspeed(MicroServerComs):
                 update = True
         if update:
             self.publish ()
-            print ("Airspeed: %d(%d)"%(self.airspeed, self.airspeed_confidence))
+            print ("Airspeed: %.1f(%.1f)"%(self.airspeed, self.airspeed_confidence))
 
 
 if __name__ == "__main__":

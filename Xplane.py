@@ -202,40 +202,64 @@ class XplaneSensors:
         assert(self.sensor_suite[0][1] == "Altitude")
         return self.sensor_suite[0][0]
 
+    def AltitudeConfidence(self):
+        return 10.0
+
     def Heading(self):
         self.ProcessIncoming()
         assert(self.sensor_suite[1][1] == "Heading")
         return self.sensor_suite[1][0]
+
+    def HeadingConfidence(self):
+        return 10.0
 
     def Roll(self):
         self.ProcessIncoming()
         assert(self.sensor_suite[2][1] == "Roll")
         return self.sensor_suite[2][0]
 
+    def RollConfidence(self):
+        return 10.0
+
     def RollRate(self):
         self.ProcessIncoming()
         assert(self.sensor_suite[3][1] == "RollRate")
         return self.sensor_suite[3][0]
+
+    def RollRateConfidence(self):
+        return 10.0
 
     def Pitch(self):
         self.ProcessIncoming()
         assert(self.sensor_suite[4][1] == "Pitch")
         return self.sensor_suite[4][0]
 
+    def PitchConfidence(self):
+        return 10.0
+
     def PitchRate(self):
         self.ProcessIncoming()
         assert(self.sensor_suite[5][1] == "PitchRate")
         return self.sensor_suite[5][0]
+
+    def PitchRateConfidence(self):
+        return 10.0
 
     def Yaw(self):
         self.ProcessIncoming()
         assert(self.sensor_suite[6][1] == "Yaw")
         return self.sensor_suite[6][0]
 
+    def YawConfidence(self):
+        return 10.0
+
     def AirSpeed(self):
         self.ProcessIncoming()
         assert(self.sensor_suite[7][1] == "AirSpeed")
         return self.sensor_suite[7][0]
+
+    def AirSpeedConfidence(self):
+        return 10.0
 
     def GroundSpeed(self):
         self.ProcessIncoming()
@@ -246,6 +270,9 @@ class XplaneSensors:
         self.ProcessIncoming()
         assert(self.sensor_suite[9][1] == "ClimbRate")
         return self.sensor_suite[9][0]
+
+    def ClimbRateConfidence(self):
+        return 10.0
 
     def Position(self):
         self.ProcessIncoming()
@@ -260,6 +287,12 @@ class XplaneSensors:
             return 0
         else:
             return ((self.sensor_suite[1][0] - self.previous_readings[1]) * self.SamplesPerSecond)
+
+    def HeadingRateChangeConfidence(self):
+        return 10.0
+
+    def GPSSignalQuality(self):
+        return 10.0
 
     def TrueHeading(self):
         self.ProcessIncoming()
@@ -369,4 +402,8 @@ class XplaneSensors:
         pass
     
     def Ready(self):
+        self.ProcessIncoming()
         return self.sensor_suite[14][0] != 0
+
+    def SendBarometer(self, b):
+        pass

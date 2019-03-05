@@ -585,10 +585,6 @@ class Airplane(FileConfig.FileConfig):
         return ret
 
     def Update(self):
-        if self.has_crashed():
-            logger.error("Airplane crashed")
-            if self._throttle_control is not None: self._throttle_control.Set(0)
-            return -1
         gs = self._sensors.GroundSpeed()
         if gs is None:
             gs = 0
@@ -598,6 +594,10 @@ class Airplane(FileConfig.FileConfig):
             if self._sensors.AirSpeed() < 10:
                 print ("Now ground mode")
                 self.ChangeMode(Globals.FLIGHT_MODE_GROUND)
+            if self.has_crashed():
+                logger.error("Airplane crashed")
+                if self._throttle_control is not None: self._throttle_control.Set(0)
+                return -1
             attitude = self._flight_control.Update()
             if self._current_directive_end_time != 0 and self._current_directive_end_time <= self._sensors.Time():
                 # The latest optimization step was running but has completed. Go to next directive

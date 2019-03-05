@@ -18,13 +18,6 @@
  #include "WProgram.h"
 #endif
 
-#ifdef __AVR_ATtiny85__
-  #include "TinyWireM.h"
-  #define Wire TinyWireM
-#else
-  #include <Wire.h>
-#endif
-
 #include <limits.h>
 
 #include "Adafruit_LSM303_U.h"
@@ -77,7 +70,7 @@ bool Adafruit_LSM303_Accel_Unified::read8(byte address, byte reg, byte *value)
     Wire.send(reg);
   #endif
   Wire.endTransmission();
-  if (!Wire.requestFrom(address, (byte)1) < 1)
+  if (Wire.requestFrom(address, (byte)1) < 1)
       return false;
   #if ARDUINO >= 100
     *value = Wire.read();
@@ -157,18 +150,30 @@ Adafruit_LSM303_Accel_Unified::Adafruit_LSM303_Accel_Unified(int32_t sensorID) {
 /**************************************************************************/
 bool Adafruit_LSM303_Accel_Unified::begin()
 {
+    extern char output_line[];
   // Enable I2C
+#ifdef CORE_TEENSY
+  Wire.begin(I2C_MASTER, 0x00, I2C_PINS_18_19, I2C_PULLUP_EXT, I2C_RATE_100);
+  Wire.setDefaultTimeout(1000);
+#else
   Wire.begin();
-
+#endif
   // Enable the accelerometer (100Hz)
   write8(LSM303_ADDRESS_ACCEL, LSM303_REGISTER_ACCEL_CTRL_REG1_A, 0x57);
   
   // LSM303DLHC has no WHOAMI register so read CTRL_REG1_A back to check
   // if we are connected or not
-  uint8_t reg1_a;
-  if ((!read8(LSM303_ADDRESS_ACCEL, LSM303_REGISTER_ACCEL_CTRL_REG1_A)) ||
+  uint8_t reg1_a = 0;
+  if ((!read8(LSM303_ADDRESS_ACCEL, LSM303_REGISTER_ACCEL_CTRL_REG1_A, &reg1_a)) ||
             (reg1_a != 0x57))
-  {
+  { 
+      if (0 == reg1_a)
+      {
+        sprintf (output_line, "No response from LSM303 accel whoami register");
+      } else
+      {
+        sprintf (output_line, "Invalid response from LSM303 accel whoami register: 0x%x", reg1_a);
+      }
     return false;
   }  
   
@@ -345,6 +350,7 @@ Adafruit_LSM303_Mag_Unified::Adafruit_LSM303_Mag_Unified(int32_t sensorID) {
 /**************************************************************************/
 bool Adafruit_LSM303_Mag_Unified::begin()
 {
+    extern char output_line[];
   // Enable I2C
   Wire.begin();
   
@@ -353,10 +359,17 @@ bool Adafruit_LSM303_Mag_Unified::begin()
 
   // LSM303DLHC has no WHOAMI register so read CRA_REG_M to check
   // the default value (0b00010000/0x10)
-  uint8_t reg1_a;
-  if ((!read8(LSM303_ADDRESS_MAG, LSM303_REGISTER_MAG_CRA_REG_M)) ||
+  uint8_t reg1_a = 0;
+  if ((!read8(LSM303_ADDRESS_MAG, LSM303_REGISTER_MAG_CRA_REG_M, &reg1_a)) ||
             (reg1_a != 0x10))
   {
+      if (0 == reg1_a)
+      {
+        sprintf (output_line, "No response from LSM303 mag whoami register");
+      } else
+      {
+        sprintf (output_line, "Invalid response from LSM303 mag whoami register: 0x%x", reg1_a);
+      }
     return false;
   }
 
@@ -447,7 +460,7 @@ bool Adafruit_LSM303_Mag_Unified::getEvent(sensors_event_t *event) {
   {
 
     uint8_t reg_mg;
-    if ((!read8(LSM303_ADDRESS_MAG, LSM303_REGISTER_MAG_SR_REG_Mg, reg_mg)) ||
+    if ((!read8(LSM303_ADDRESS_MAG, LSM303_REGISTER_MAG_SR_REG_Mg, &reg_mg)) ||
                 (!(reg_mg & 0x1)))
     {
         return false;

@@ -11,7 +11,8 @@ enum
  ack
 ,nack
 ,sensor_reading                // channel, value, timestamp
-,send_log                           // loglevel, string
+,send_log                      // loglevel, string
+,trace_log                     // line number
 
 // Messages from this program to the board
 ,setup_digital_sensor          // channel, pin, polling period (ms)
@@ -23,6 +24,7 @@ enum
 ,setup_digital_output          // pin, initial_value
 ,set_analog_output             // pin, value
 ,set_digital_output            // pin, value
+,save_configuration            // nchans
 };
 
 //
@@ -62,20 +64,26 @@ enum
 typedef struct
 {
     uint32_t    period;
-    uint32_t    next_time;
     float       filter_coefficient[2];
-    float       state[3];
-    uint32_t    sample_count;
-    float       secondary_band;
+    union
+    {
+        float       secondary_band;
+        char        stype[4];
+    };
     float       rejection_band;
     unsigned    secondary_filter_duration;
+    char        function;
+    uint8_t     pin;
+
+    float       state[3];
+    uint32_t    next_time;
+    uint32_t    sample_count;
     unsigned    secondary_filter_count;
     unsigned    reject_count;
     unsigned    secondary_use_count;
-
-    char        function;
-    uint8_t     pin;
 } sChannel;
+
+#define CHANNEL_CONFIGURATION_SIZE (4+4+4+4+2+1+1)
 
 typedef sChannel    *pChannel;
 
@@ -89,6 +97,7 @@ enum
     pressure_function,
     temp_function,
     gps_function,
+    pitot_function,
     num_functions
 };
 

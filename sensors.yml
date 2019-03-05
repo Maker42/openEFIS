@@ -4,6 +4,7 @@ magnetic:       [sensor_i2c, m, 400, .01, .1, 0.8, 10.0, 100]
 pressure:       [sensor_i2c, p, 800, .01, .1, 15.0, 50.0, 30]
 temperature:    [sensor_i2c, t, 1000,.01, .1, 0.2, 1.0, 30]
 gps:            [sensor_serial, g, 1, ubx]
+pitot:          [sensor_analog, 0, 100,.01,.1, 50, 300,  30]
 cal:
     rotation: [collect, 100, respond_heading]
     magnetic: [rotation,20,1.,1.]

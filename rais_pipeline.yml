@@ -1,0 +1,4 @@
+pubsub_config: sensors_pubsub1.yml
+port_bases: [48200, 48400, 48500]
+rais_pubsub: rais_output.yml
+rais_port: 48600

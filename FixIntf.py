@@ -271,8 +271,10 @@ def thread_run( selected_altitude
     sensors = craft.Sensors()
     while not sensors.Ready():
         sensors.SendBarometer (fix.db.get_item("BARO").value)
-        print ("Not ready. Barometer %g"%(fix.db.get_item("BARO").value))
+        #print ("Sensors Not ready. Barometer %g"%(fix.db.get_item("BARO").value))
         time.sleep(1)
+        if not run_fms:
+            return
     craft.initialize_input(
                           selected_altitude
                          ,selected_airspeed
@@ -305,24 +307,79 @@ def thread_run( selected_altitude
 
 BARO_UPDATE_PERIOD=1.0
 last_baro_time = time.time()-BARO_UPDATE_PERIOD
+BAD_THRESHOLD=5.0
+FAIL_THRESHOLD=2.0
 
 def sensors_to_fix(sensors):
     global last_baro_time, givenbarometer
-    fix.db.get_item("PITCH").value = sensors.Pitch()
-    fix.db.get_item("ROLL").value = sensors.Roll()
-    fix.db.get_item("YAW").value = sensors.Yaw()
-    lng,lat = sensors.Position()
+    PITCH = fix.db.get_item("PITCH")
+    PITCH.value = sensors.Pitch()
+    PITCH_conf = sensors.PitchConfidence()
+    PITCH.bad = True if PITCH_conf < BAD_THRESHOLD else False
+    PITCH.fail = True if PITCH_conf < FAIL_THRESHOLD else False
+    PITCH.old = False
+    ROLL = fix.db.get_item("ROLL")
+    ROLL.value = sensors.Roll()
+    ROLL_conf = sensors.RollConfidence()
+    ROLL.bad = True if ROLL_conf < BAD_THRESHOLD else False
+    ROLL.fail = True if ROLL_conf < FAIL_THRESHOLD else False
+    ROLL.old = False
+    YAW = fix.db.get_item("YAW")
+    YAW.value = sensors.Yaw()
+    YAW_conf = sensors.YawConfidence()
+    YAW.bad = True if YAW_conf < BAD_THRESHOLD else False
+    YAW.fail = True if YAW_conf < FAIL_THRESHOLD else False
+    YAW.old = False
+    lat,lng = sensors.Position()
     if lng is not None:
-        fix.db.get_item("LAT").value = lat
-        fix.db.get_item("LONG").value = lng
-        fix.db.get_item("TRACK").value = sensors.GroundTrack()
-        fix.db.get_item("GS").value = sensors.GroundSpeed()
-    fix.db.get_item("ALT").value = sensors.Altitude()
+        gsq = sensors.GPSSignalQuality()
+        LAT = fix.db.get_item("LAT")
+        LAT.value = lat
+        LAT.bad = True if gsq < BAD_THRESHOLD else False
+        LAT.fail = True if gsq < FAIL_THRESHOLD else False
+        LAT.old = False
+        LONG = fix.db.get_item("LONG")
+        LONG.value = lng
+        LONG.bad = True if gsq < BAD_THRESHOLD else False
+        LONG.fail = True if gsq < FAIL_THRESHOLD else False
+        LONG.old = False
+        TRACK = fix.db.get_item("TRACK")
+        TRACK.value = sensors.GroundTrack()
+        TRACK.bad = True if gsq < BAD_THRESHOLD else False
+        TRACK.fail = True if gsq < FAIL_THRESHOLD else False
+        TRACK.old = False
+        GS = fix.db.get_item("GS")
+        GS.value = sensors.GroundSpeed()
+        GS.bad = True if gsq < BAD_THRESHOLD else False
+        GS.fail = True if gsq < FAIL_THRESHOLD else False
+        GS.old = False
+    ALT = fix.db.get_item("ALT")
+    ALT.value = sensors.Altitude()
+    ALT_conf = sensors.AltitudeConfidence()
+    ALT.bad = True if ALT_conf < BAD_THRESHOLD else False
+    ALT.fail = True if ALT_conf < FAIL_THRESHOLD else False
+    ALT.old = False
     airspeed = sensors.AirSpeed()
     if airspeed is not None:
-        fix.db.get_item("IAS").value = airspeed
-    fix.db.get_item("VS").value = sensors.ClimbRate()
-    fix.db.get_item("HEAD").value = sensors.Heading()
+        IAS = fix.db.get_item("IAS")
+        IAS.value = airspeed
+        IAS_conf = sensors.AirSpeedConfidence()
+        IAS.bad = True if IAS_conf < BAD_THRESHOLD else False
+        IAS.fail = True if IAS_conf < FAIL_THRESHOLD else False
+        IAS.old = False
+    VS = fix.db.get_item("VS")
+    VS.value = sensors.ClimbRate()
+    VS_conf = sensors.ClimbRateConfidence()
+    VS.bad = True if VS_conf < BAD_THRESHOLD else False
+    VS.fail = True if VS_conf < FAIL_THRESHOLD else False
+    VS.old = False
+    HEAD = fix.db.get_item("HEAD")
+    HEAD.value = sensors.Heading()
+    HEAD_conf = sensors.HeadingConfidence()
+    HEAD.bad = True if HEAD_conf < BAD_THRESHOLD else False
+    HEAD.fail = True if HEAD_conf < FAIL_THRESHOLD else False
+    HEAD.old = False
+
     if last_baro_time+BARO_UPDATE_PERIOD < time.time():
         last_baro_time = time.time()
         sensors.SendBarometer (fix.db.get_item("BARO").value)

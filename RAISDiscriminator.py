@@ -148,7 +148,9 @@ class RAISDiscriminator(MicroServerComs):
                     break
             else:
                 # All sources out of date. Mark confidence 0
+                needs_update = False
                 if len(d) == 0:
+                    needs_update = True
                     ts_name = channel + '_updated'
                     for vname in self.input_map[channel]:
                         attrname = vname
@@ -156,15 +158,19 @@ class RAISDiscriminator(MicroServerComs):
                             attrname = ts_name
                         for idx in range(self.ninputs):
                             attr = getattr (self, attrname)
+                            d[idx] = 0.0
                             for idx in range(self.ninputs):
                                 attr[idx] = 0
                 for vname in self.input_map[channel]:
                     if 'confidence' in vname:
                         attr = getattr(self,vname)
                         for idx in range(self.ninputs):
-                            attr[idx] = 0.0
-                #print ("%s all lost. confidence 0."%channel)
-                self.output (channel)
+                            if idx not in attr or attr[idx] != 0.0:
+                                needs_update = True
+                                attr[idx] = 0.0
+                if needs_update:
+                    print ("%s all lost. confidence 0."%channel)
+                    self.output (channel)
 
     def append_history(self, idx, channel, entry):
         if not channel in self.history:
@@ -207,7 +213,7 @@ class RAISDiscriminator(MicroServerComs):
                 # We've got 3 or more redundant sensor arrays
                 readings = [r for r in d.values()]
                 readings.sort()
-                median = readings[len(d) / 2]
+                median = readings[int(len(d) / 2)]
             else:
                 median = None
             if h[0] == RAISDiscriminator.HIST_CONFIDENCE_FAIL or \
@@ -243,7 +249,10 @@ class RAISDiscriminator(MicroServerComs):
 
     def score_variance (self, d, idx, median):
         if (median is not None) and idx in d:
-            variance = abs(d[idx] - median) / median
+            if median != 0:
+                variance = abs(d[idx] - median) / median
+            else:
+                variance = abs(d[idx])
             #print ("[%d] variance score %g"%(idx, variance))
             return variance * RAISDiscriminator.VARIANCE_SCORE_WEIGHT
         else:
@@ -297,6 +306,7 @@ class BaroDistributor(MicroServerComs):
         for o in self.outputs:
             o.given_barometer = self.given_barometer
             o.publish()
+            # print ("RAIS republishing barometer to %s"%str(o.pubchannel.getpeername()))
 
 
 if __name__ == "__main__":

@@ -1,15 +1,15 @@
-# Copyright (C) 2015-2018  Garrett Herschleb
-# 
+# Copyright (C) 2015-2019  Garrett Herschleb
+#
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
@@ -42,6 +42,7 @@ arduino_messages = [
 ,"nack"                         # reason for nack
 ,"sensor_reading"               # channel, value, timestamp, nsubsamples
 ,"log"                          # loglevel, string
+,"trace"                        # line number
 
 # Messages from this program to the board
 ,"setup_digital_sensor"         # channel, pin, polling period (ms), use internal pullup (0 or 1)
@@ -67,6 +68,7 @@ class SenseControlSlave(MicroServerComs):
         self._rotation = Rotation(pubsub_cfg)
         self._magnetic = Magnetic(pubsub_cfg)
         self._pressure = Pressure(pubsub_cfg)
+        self._pitot = Pitot(pubsub_cfg)
         self._temperature = Temperature(pubsub_cfg)
         self._gps = GPS(pubsub_cfg)
         self._calibrations = dict()
@@ -75,6 +77,8 @@ class SenseControlSlave(MicroServerComs):
         self.engaged = 0
         self.previous_engaged = 0
         self.engage_channel = None
+        self.last_trace_report = time.time()
+        self.trace_lines = list()
         for config_term,cfg in self._config.items():
             if config_term.startswith ('cal'):
                 self._calibrations.update (cfg)
@@ -82,10 +86,10 @@ class SenseControlSlave(MicroServerComs):
                 function = cfg[1]
                 if cfg[0] == 'sensor_digital':
                     resp = self._mainCmd.sendCmd ("setup_digital_sensor", [sensor_chnum] + cfg[1:])
-                    function = 'd'
+                    function = 'd' + config_term
                 elif cfg[0] == 'sensor_analog':
                     resp = self._mainCmd.sendCmd ("setup_analog_sensor", [sensor_chnum] + cfg[1:])
-                    function = 'n'
+                    function = 'n' + config_term
                 elif cfg[0] == 'sensor_i2c':
                     resp = self._mainCmd.sendCmd ("setup_i2c_sensor", [sensor_chnum] + cfg[1:])
                 elif cfg[0] == 'sensor_spi':
@@ -110,7 +114,7 @@ class SenseControlSlave(MicroServerComs):
                 if config_term == "engage":
                     self.engage_channel = output_chnum
                 output_chnum += 1
-        self._mainCmd.sendCmd ("save_configuration", [sensor_chnum])
+        #self._mainCmd.sendCmd ("save_configuration", [sensor_chnum])
         MicroServerComs.__init__(self, "ControlSlave", config=pubsub_cfg)
 
     def update(self, channel):
@@ -135,6 +139,9 @@ class SenseControlSlave(MicroServerComs):
             cmd = self._mainCmd.read_command (0.01)
             if not self.ProcessResponse (cmd):
                 break
+        #if time.time() - self.last_trace_report > 1:
+        #    self.last_trace_report = time.time()
+        #    print ("last trace lines: %s"%str(self.trace_lines[-10:]))
 
     def ProcessResponse(self, cmd):
         if cmd is not None:
@@ -146,9 +153,13 @@ class SenseControlSlave(MicroServerComs):
                 else:
                     function = self._sensors[ch]
                     self.sensor_updated (function, args[1:])
-            if name == 'log':
+            elif name == 'log':
                 loglevel,log_string = args
                 rootlogger.log (loglevel, "scboard: " + log_string)
+            elif name == 'trace':
+                self.trace_lines.append (int(args[0]))
+                if len(self.trace_lines) > 100:
+                    del self.trace_lines[0]
             return True
         else:
             return False
@@ -182,10 +193,11 @@ class SenseControlSlave(MicroServerComs):
             # generic digital input, configured elsewhere
             # Not implemented
             raise RuntimeError ("digital input not implemented")
-        elif function == 'n':
-            # generic analog input, configured elsewhere
-            # Not implemented
-            raise RuntimeError ("analog input not implemented")
+        elif function.startswith('n'):
+            if 'pitot' in function:
+                self._pitot.send (args)
+            else:
+                raise RuntimeError ("Unknown analog input type %s"%function[1:])
 
 
 class SampleCounter():
@@ -229,6 +241,14 @@ class Accelerometers(MicroServerComs,SampleCounter):
 
     def send(self, args, calibration):
         self.a_x, self.a_y, self.a_z, ts, self.sample_count, secondary, rj = args
+        self._send (secondary, rj, ts)
+
+    def send2(self, values, ts, stats, calibration):
+        self.a_x, self.a_y, self.a_z = values
+        self.sample_count, secondary, rj = stats
+        self._send (secondary, rj, ts)
+
+    def _send(self, secondary, rj, ts):
         self.update_counts(secondary, rj)
         self.timestamp = make_timestamp (ts)
         #print ("accel %g,%g,%g"%(self.a_x, self.a_y, self.a_z))
@@ -249,7 +269,25 @@ class Rotation(MicroServerComs,SampleCounter):
 
     def send(self, args, calibration):
         self.r_x, self.r_y, self.r_z, ts, self.sample_count, secondary, rj = args
+        self.calibrate(calibration)
+        self._send(secondary, rj, ts)
+
+    def send2(self, values, ts, stats, calibration):
+        self.r_x, self.r_y, self.r_z = values
+        self.sample_count, secondary, rj = stats
+        self.calibrate(calibration)
+        self._send(secondary, rj, ts)
+
+    def _send(self, secondary, rj, ts):
         self.update_counts(secondary, rj)
+        self.timestamp = make_timestamp (ts)
+        self.print_count += 1
+        if self.print_count % 10 == 0:
+            print ("rotation %.2f,%.2f,%.2f"%(self.r_x, self.r_y, self.r_z))
+        self.publish()
+
+
+    def calibrate(self, calibration):
         if calibration:
             if isinstance (calibration[0],str) and calibration[0] == 'collect':
                 if self.cal_collection_count < calibration [1]:
@@ -276,12 +314,6 @@ class Rotation(MicroServerComs,SampleCounter):
             self.r_y -= c_y
             self.r_z -= c_z
 
-        self.timestamp = make_timestamp (ts)
-        self.print_count += 1
-        if self.print_count % 10 == 0:
-            print ("rotation %g,%g,%g"%(self.r_x, self.r_y, self.r_z))
-        self.publish()
-
     def reset_bias(self):
         mean = [sum(x) for x in self.samples]
         self.current_bias = [x/len(self.samples[0]) for x in mean]
@@ -302,7 +334,16 @@ class Magnetic(MicroServerComs,SampleCounter):
 
     def send(self, args, calibration):
         self.m_x, self.m_y, self.m_z, ts, self.sample_count, secondary, rj = args
-        self.update_counts(secondary, rj)
+        self.calibrate(calibration)
+        self._send (secondary, rj, ts)
+
+    def send2(self, values, ts, stats, calibration):
+        self.m_x, self.m_y, self.m_z = values
+        self.sample_count, secondary, rj = stats
+        self.calibrate(calibration)
+        self._send (secondary, rj, ts)
+
+    def calibrate(self, calibration):
         if calibration is not None and isinstance (calibration[0],str) and calibration[0] == 'rotation':
             if len(calibration) >= 5:
                 sample_count,max_sample_dev,max_trend_dev,rot_object = calibration[1:5]
@@ -310,6 +351,7 @@ class Magnetic(MicroServerComs,SampleCounter):
                 self.samples[1].append (self.m_y)
                 self.samples[2].append (self.m_z)
                 if len(self.samples[0]) >= sample_count:
+                    #print ("magnet samples = %s"%str(self.samples))
                     mean = [sum(x)/len(self.samples[0]) for x in self.samples]
                     deviation = [[abs(x-m) for x in samp] for samp,m in zip(self.samples,mean)]
                     deviation = [max(x) for x in deviation]
@@ -329,6 +371,9 @@ class Magnetic(MicroServerComs,SampleCounter):
                                     max_trend, max_trend_dev))
                     self.samples = [list(), list(), list()]
                     rot_object.reset_samples()
+
+    def _send(self, secondary, rj, ts):
+        self.update_counts(secondary, rj)
         self.timestamp = make_timestamp (ts)
         #print ("magnetic %g,%g,%g"%(self.m_x, self.m_y, self.m_z))
         self.publish()
@@ -336,18 +381,23 @@ class Magnetic(MicroServerComs,SampleCounter):
 class Pressure(MicroServerComs,SampleCounter):
     def __init__(self, pubsub_cfg):
         self.static_pressure = None
-        self.pitot_pressure = None
         self.timestamp = None
-        self.sc_min = 9999999
-        self.sc_max = 0
         MicroServerComs.__init__(self, "RawPressureSensors", channel='pressuresensors', config=pubsub_cfg)
         SampleCounter.__init__(self, 10)
 
     def send(self, args, calibration):
-        self.static_pressure, self.pitot_pressure, ts, self.sample_count, secondary, rj = args
-        self.update_counts(secondary, rj)
+        self.static_pressure, ts, self.sample_count, secondary, rj = args
         self.static_pressure /= 1000.0
-        self.pitot_pressure /= 1000.0
+        self._send (secondary, rj, ts)
+
+    def send2(self, values, ts, stats, calibration):
+        self.static_pressure = values
+        self.sample_count, secondary, rj = stats
+        self.static_pressure /= 1000.0
+        self._send (secondary, rj, ts)
+
+    def _send(self, secondary, rj, ts):
+        self.update_counts(secondary, rj)
         self.timestamp = make_timestamp (ts)
         #print ("pressure %g,%g"%(self.static_pressure, self.pitot_pressure))
         self.publish()
@@ -360,8 +410,41 @@ class Temperature(MicroServerComs,SampleCounter):
 
     def send(self, args, calibration):
         self.temperature, self.sample_count, secondary, rj = args
+        self._send (secondary, rj)
+
+    def send2(self, values, stats, calibration):
+        self.temperature = values
+        self.sample_count, secondary, rj = stats
+        self._send (secondary, rj)
+
+    def _send(self, secondary, rj):
         self.update_counts(secondary, rj)
         #print ("temp %g"%(self.temperature))
+        self.publish()
+
+class Pitot(MicroServerComs,SampleCounter):
+    def __init__(self, pubsub_cfg):
+        self.pitot = None
+        self.timestamp = None
+        self.print_count = 0
+        MicroServerComs.__init__(self, "RawPitotSensor", channel='pitotsensor', config=pubsub_cfg)
+        SampleCounter.__init__(self, 10)
+
+    def send(self, args):
+        self.pitot, ts, self.sample_count, secondary, rj = args
+        self._send (secondary, rj, ts)
+
+    def send2(self, values, ts, stats):
+        self.pitot = values
+        self.sample_count, secondary, rj = stats
+        self._send (secondary, rj, ts)
+
+    def _send(self, secondary, rj, ts):
+        self.update_counts(secondary, rj)
+        self.timestamp = make_timestamp (ts)
+        self.print_count += 1
+        if self.print_count % 10 == 0:
+            print ("pitot %.2f"%(self.pitot,))
         self.publish()
 
 class GPS(MicroServerComs):

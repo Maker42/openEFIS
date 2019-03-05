@@ -101,21 +101,31 @@ class Sensors(MicroServerComs):
         self._wind_report = WindsAloftReport(cfg)
         self._given_barometer = GivenBarometer(cfg)
         self.altitude = None
+        self.altitude_confidence = 0
         self.airspeed = None
+        self.airspeed_confidence = 0
         self.heading = None
+        self.heading_confidence = 0
         self.roll = None
+        self.roll_confidence = 0
         self.roll_rate = None
+        self.roll_rate_confidence = 0
         self.pitch = None
+        self.pitch_confidence = 0
         self.pitch_rate = None
+        self.pitch_rate_confidence = 0
         self.yaw = None
+        self.yaw_confidence = 0
         self.climb_rate = None
+        self.climb_rate_confidence = 0
         self.turn_rate = None
+        self.turn_rate_confidence = 0
         self.gps_utc = None
         self.gps_lat = None
         self.gps_lng = None
         self.gps_ground_speed = None
         self.gps_ground_track = None
-        self.gps_signal_quality = None
+        self.gps_signal_quality = 0
         self.last_update_time = 0
 
     def initialize(self, alt=None, wind=None):
@@ -139,45 +149,78 @@ class Sensors(MicroServerComs):
         self.listen (timeout=0, loop=False)
         return self.altitude
 
+    def AltitudeConfidence(self):
+        return self.altitude_confidence
+
     def Heading(self):
         self.listen (timeout=0, loop=False)
         return self.heading
+
+    def HeadingConfidence(self):
+        return self.heading_confidence
 
     def Roll(self):
         self.listen (timeout=0, loop=False)
         return self.roll
 
+    def RollConfidence(self):
+        return self.roll_confidence
+
     def RollRate(self):
         self.listen (timeout=0, loop=False)
         return self.roll_rate
+
+    def RollRateConfidence(self):
+        return self.roll_rate_confidence
 
     def Pitch(self):
         self.listen (timeout=0, loop=False)
         return self.pitch
 
+    def PitchConfidence(self):
+        return self.pitch_confidence
+
     def PitchRate(self):
         self.listen (timeout=0, loop=False)
         return self.pitch_rate
+
+    def PitchRateConfidence(self):
+        return self.pitch_rate_confidence
 
     def Yaw(self):
         self.listen (timeout=0, loop=False)
         return self.yaw
 
+    def YawConfidence(self):
+        return self.yaw_confidence
+
     def AirSpeed(self):
         self.listen (timeout=0, loop=False)
         return self.airspeed
+
+    def AirSpeedConfidence(self):
+        return self.airspeed_confidence
 
     def ClimbRate(self):
         self.listen (timeout=0, loop=False)
         return self.climb_rate
 
+    def ClimbRateConfidence(self):
+        return self.climb_rate_confidence
+
     def Position(self):
         self.listen (timeout=0, loop=False)
         return (self.gps_lat, self.gps_lng)
 
+    def GPSSignalQuality(self):
+        return self.gps_signal_quality
+
     def HeadingRateChange(self):
         self.listen (timeout=0, loop=False)
         return self.turn_rate
+
+    def HeadingRateChangeConfidence(self):
+        return self.turn_rate_confidence
 
     def TrueHeading(self):
         self.listen (timeout=0, loop=False)
@@ -294,6 +337,7 @@ class GivenBarometer(MicroServerComs):
 
     def send(self, b):
         self.given_barometer = b
+        # print ("Barometer %g published %s"%(b, str(self.pubchannel.getpeername())))
         self.publish()
 
 

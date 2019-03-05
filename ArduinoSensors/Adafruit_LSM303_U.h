@@ -26,7 +26,11 @@
   #include "TinyWireM.h"
   #define Wire TinyWireM
 #else
+ #ifdef CORE_TEENSY
+  #include <i2c_t3.h>
+ #else
   #include <Wire.h>
+ #endif
 #endif
 
 
