@@ -86,6 +86,31 @@ class SensorChannel:
         else:
             return None,None,None
 
+    def update_sensor(self, pname, val):
+        ret = True
+        if 'polling period (ms)'.startswith(pname):
+            self.period = val
+        elif 'f0'.startswith(pname):
+            self.coefficients[0] = val
+        elif 'f1'.startswith(pname):
+            self.coefficients[1] = val
+        elif 'sband'.startswith(pname):
+            self.bands[0] = val
+        elif 'rejection_band'.startswith(pname):
+            self.bands[1] = val
+        elif 'sduration'.startswith(pname):
+            self.secondary_duration = val
+        else:
+            print ("Invalid parameter ID: %s"%pname)
+            ret = False
+        return ret
+
+    def print_stats(self):
+        print ("sample_count %d, sec %d, rej %d"%(
+            self.sample_count, self.secondary_use_count, self.reject_count))
+
+    def print_data(self):
+        print (str(self.state))
 
 base_sensor_suite = dict()
 sensor_objects = dict()
@@ -99,10 +124,14 @@ def start(config):
 
     # Open i2c bus
     bus = SMBus(devnum)
-    if not base_sensor_suite[9250].begin(bus):
-        return False
-    if not base_sensor_suite[280].begin(bus):
-        return False
+    sensor_list = config['sensors']
+    if 'accel' == sensor_list or 'magnet' in sensor_list or \
+            'gyro' in sensor_list:
+        if not base_sensor_suite[9250].begin(bus):
+            return False
+    if 'pressure' == sensor_list or 'temperature' in sensor_list:
+        if not base_sensor_suite[280].begin(bus):
+            return False
 
     for measurement,parms in config['sensors'].items():
         if 'pressure' == measurement:
@@ -139,13 +168,51 @@ def read_magnetic():
         return None,None,None
 
 def read_gyroscope():
-    return sensor_objects['gyro'].read()
+    if 'gyro' in sensor_objects:
+        return sensor_objects['gyro'].read()
+    else:
+        return None,None,None
 
 def read_accelerometer():
-    return sensor_objects['accel'].read()
+    if 'accel' in sensor_objects:
+        return sensor_objects['accel'].read()
+    else:
+        return None,None,None
 
 def read_temperature():
-    return sensor_objects['temperature'].read()
+    if 'temperature' in sensor_objects:
+        return sensor_objects['temperature'].read()
+    else:
+        return None,None,None
 
 def read_pressure():
-    return sensor_objects['pressure'].read()
+    if 'pressure' in sensor_objects:
+        return sensor_objects['pressure'].read()
+    else:
+        return None,None,None
+
+def modify_sensor_parm(sname, pname, val):
+    global sensor_objects
+    try:
+        val = float(val)
+    except Exception as e:
+        print ("Invalid value: %s (%s)"%(val, str(e)))
+        return
+    for chname,obj in sensor_objects.items():
+        if chname.startswith(sname):
+            if obj.update_sensor(pname, val):
+                print ("Update %s[%s] = %g"%(chname,pname,val))
+            return
+    else:
+        print ("Can't find sensor %s"%sname)
+
+def print_sensor(sname):
+    global sensor_objects
+    for chname,obj in sensor_objects.items():
+        if chname.startswith(sname):
+            print ("%s:"%chname)
+            obj.print_data()
+            obj.print_stats()
+            return
+    else:
+        print ("Can't find sensor %s"%sname)

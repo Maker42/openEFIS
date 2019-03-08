@@ -15,6 +15,8 @@
 
 import os
 import sys,  math, time
+from cmd import Cmd
+import threading
 
 import logging
 import argparse
@@ -55,13 +57,16 @@ arduino_messages = [
 ,"set_analog_output"            # pin, value
 ,"set_digital_output"           # pin, value
 ,"save_configuration"           # nchans
+,"update_sensor"                # channel, polling period (ms), filter_coefficients, secondary_band, rejection_band, secondary_duration
 ]
 
 class SenseControlSlave(MicroServerComs):
     def __init__(self, command_channel, config, pubsub_cfg):
         self._mainCmd = command_channel
+        self.cmd_lock = threading.Lock()
         self._config = config
         self._sensors = dict()
+        self._scfg = dict()
         sensor_chnum = 0
         output_chnum = 0
         self._accelerometers = Accelerometers(pubsub_cfg)
@@ -102,6 +107,7 @@ class SenseControlSlave(MicroServerComs):
                     for r in resp:
                         self.ProcessResponse(r)
                 self._sensors[sensor_chnum] = function
+                self._scfg[sensor_chnum] = cfg
                 sensor_chnum += 1
             elif cfg[0].startswith('output'):
                 function = cfg[1]
@@ -135,8 +141,11 @@ class SenseControlSlave(MicroServerComs):
 
     def ReadSensors(self):
         global rootlogger
+        begin_time = time.time()
         while True:
+            self.cmd_lock.acquire()
             cmd = self._mainCmd.read_command (0.01)
+            self.cmd_lock.release()
             if not self.ProcessResponse (cmd):
                 break
         #if time.time() - self.last_trace_report > 1:
@@ -199,6 +208,69 @@ class SenseControlSlave(MicroServerComs):
             else:
                 raise RuntimeError ("Unknown analog input type %s"%function[1:])
 
+    def sensor_name2obj(self, name):
+        if name.startswith('t'):
+            return self._temperature
+        elif name.startswith('pi'):
+            return self._pitot
+        elif name.startswith('pr'):
+            return self._pressure
+        elif name.startswith('a'):
+            return self._accelerometers
+        elif name.startswith('g'):
+            return self._rotation
+        elif name.startswith('m'):
+            return self._magnetic
+        else:
+            return None
+
+    def print_sensor(self, name):
+        obj = self.sensor_name2obj (name)
+        if obj is None:
+            print ("Unknown sensor '%s'"%name)
+            return
+        else:
+            obj.print_data()
+
+    def update_sensor(self, sensor_chnum, cfg):
+        self.cmd_lock.acquire()
+        resp = self._mainCmd.sendCmd ("update_sensor", [sensor_chnum] + cfg[2:])
+        self.cmd_lock.release()
+        if resp is not None:
+            for r in resp:
+                self.ProcessResponse(r)
+
+    def sensor_name2chnum(self, sname):
+        for num,func in enumerate(self._sensors.values()):
+            if func == sname or func.startswith(sname):
+                return num
+        else:
+            return -1
+
+    def sensor_parm2index (self, pname):
+        for i,n in enumerate(['polling period (ms)', 'f0', 'f1', 'sband', 'rejection_band', 'sduration']):
+            if pname == n or n.startswith(pname):
+                return i+2
+        else:
+            return -1
+
+    def modify_sensor_parm(self, sname, pname, val):
+        chnum = self.sensor_name2chnum(sname)
+        if chnum < 0:
+            print ("Can't find sensor %s"%sname)
+            return
+        pnum = self.sensor_parm2index(pname)
+        if pnum < 0:
+            print ("Can't find parameter %s"%pname)
+            return
+        try:
+            val = float(val)
+        except Exception as e:
+            print ("Invalid value: %s (%s)"%(val, str(e)))
+            return
+        self._scfg[chnum][pnum] = val
+        self.update_sensor (chnum, self._scfg[chnum])
+        print ("Sensor update sent")
 
 class SampleCounter():
     def __init__(self, pp=50):
@@ -209,8 +281,10 @@ class SampleCounter():
         self.reject_count = 0
         self.secondary_count = 0
         self.print_period = pp
+        self.enable_printing = False
 
     def update_counts(self, secondary, rj):
+        ret = False
         if self.sample_count < self.sc_min:
             self.sc_min = self.sample_count
         if self.sample_count > self.sc_max:
@@ -220,15 +294,26 @@ class SampleCounter():
         self.reject_count += rj
         self.secondary_count += secondary
         if self.sc_count >= self.print_period:
-            print ("%s: min %d, max %d, mean %g; sec %d, rej %d"%(str(type(self)),
-                self.sc_min, self.sc_max, float(self.sc_sum) / float(self.sc_count),
-                self.secondary_count, self.reject_count))
+            if self.enable_printing:
+                self.print_data()
+                ret = True
             self.sc_min = 9999999
             self.sc_max = 0
             self.sc_sum = 0
             self.sc_count = 0
             self.secondary_count = 0
             self.reject_count = 0
+        return ret
+
+    def print_stats(self):
+        if self.sc_count == 0:
+            print ("%s: No current data. Try again."%str(type(self)))
+        else:
+            print ("%s: min %d, max %d, mean %g; sec %d, rej %d"%(
+                str(type(self)),
+                self.sc_min, self.sc_max,
+                float(self.sc_sum) / float(self.sc_count),
+                self.secondary_count, self.reject_count))
 
 class Accelerometers(MicroServerComs,SampleCounter):
     def __init__(self, pubsub_cfg):
@@ -249,10 +334,14 @@ class Accelerometers(MicroServerComs,SampleCounter):
         self._send (secondary, rj, ts)
 
     def _send(self, secondary, rj, ts):
-        self.update_counts(secondary, rj)
+        if self.update_counts(secondary, rj):
+            print ("accel %.2f,%.2f,%.2f"%(self.a_x, self.a_y, self.a_z))
         self.timestamp = make_timestamp (ts)
-        #print ("accel %g,%g,%g"%(self.a_x, self.a_y, self.a_z))
         self.publish()
+
+    def print_data(self):
+        print ("accel %.2f,%.2f,%.2f"%(self.a_x, self.a_y, self.a_z))
+        self.print_stats()
 
 class Rotation(MicroServerComs,SampleCounter):
     def __init__(self, pubsub_cfg):
@@ -263,7 +352,6 @@ class Rotation(MicroServerComs,SampleCounter):
         self.current_bias = [0.0, 0.0, 0.0]
         self.samples = [list(), list(), list()]
         self.timestamp = None
-        self.print_count = 0
         MicroServerComs.__init__(self, "RawRotationSensors", channel='rotationsensors', config=pubsub_cfg)
         SampleCounter.__init__(self)
 
@@ -279,11 +367,9 @@ class Rotation(MicroServerComs,SampleCounter):
         self._send(secondary, rj, ts)
 
     def _send(self, secondary, rj, ts):
-        self.update_counts(secondary, rj)
+        if self.update_counts(secondary, rj):
+            print ("gyro %.4f,%.4f,%.4f"%(self.r_x, self.r_y, self.r_z))
         self.timestamp = make_timestamp (ts)
-        self.print_count += 1
-        if self.print_count % 10 == 0:
-            print ("rotation %.2f,%.2f,%.2f"%(self.r_x, self.r_y, self.r_z))
         self.publish()
 
 
@@ -317,10 +403,14 @@ class Rotation(MicroServerComs,SampleCounter):
     def reset_bias(self):
         mean = [sum(x) for x in self.samples]
         self.current_bias = [x/len(self.samples[0]) for x in mean]
-        print ("New rotation bias %s"%(str(self.current_bias)))
+        #print ("New rotation bias %s"%(str(self.current_bias)))
 
     def reset_samples(self):
         self.samples = [list(), list(), list()]
+
+    def print_data(self):
+        print ("gyro %.4f,%.4f,%.4f"%(self.r_x, self.r_y, self.r_z))
+        self.print_stats()
 
 class Magnetic(MicroServerComs,SampleCounter):
     def __init__(self, pubsub_cfg):
@@ -362,21 +452,25 @@ class Magnetic(MicroServerComs,SampleCounter):
                     max_trend = max(trend)
                     if deviation < max_sample_dev and max_trend < max_trend_dev:
                         rot_object.reset_bias()
-                        print ("reset rotation bias because %.4g<%.4g and %.4g<%.4g"%(
-                                    deviation, max_sample_dev,
-                                    max_trend, max_trend_dev))
-                    else:
-                        print ("DO NOT reset rotation bias because %.4g>=%.4g or %.4g>=%.4g"%(
-                                    deviation, max_sample_dev,
-                                    max_trend, max_trend_dev))
+                        #print ("reset rotation bias because %.4g<%.4g and %.4g<%.4g"%(
+                        #            deviation, max_sample_dev,
+                        #            max_trend, max_trend_dev))
+                    #else:
+                    #    print ("DO NOT reset rotation bias because %.4g>=%.4g or %.4g>=%.4g"%(
+                    #                deviation, max_sample_dev,
+                    #                max_trend, max_trend_dev))
                     self.samples = [list(), list(), list()]
                     rot_object.reset_samples()
 
     def _send(self, secondary, rj, ts):
-        self.update_counts(secondary, rj)
+        if self.update_counts(secondary, rj):
+            print ("magnet %.2f,%.2f,%.2f"%(self.m_x, self.m_y, self.m_z))
         self.timestamp = make_timestamp (ts)
-        #print ("magnetic %g,%g,%g"%(self.m_x, self.m_y, self.m_z))
         self.publish()
+
+    def print_data(self):
+        print ("magnet %.2f,%.2f,%.2f"%(self.m_x, self.m_y, self.m_z))
+        self.print_stats()
 
 class Pressure(MicroServerComs,SampleCounter):
     def __init__(self, pubsub_cfg):
@@ -397,10 +491,14 @@ class Pressure(MicroServerComs,SampleCounter):
         self._send (secondary, rj, ts)
 
     def _send(self, secondary, rj, ts):
-        self.update_counts(secondary, rj)
+        if self.update_counts(secondary, rj):
+            print ("pressure %.2f"%(self.static_pressure))
         self.timestamp = make_timestamp (ts)
-        #print ("pressure %g,%g"%(self.static_pressure, self.pitot_pressure))
         self.publish()
+
+    def print_data(self):
+        print ("pressure %.2f"%(self.static_pressure))
+        self.print_stats()
 
 class Temperature(MicroServerComs,SampleCounter):
     def __init__(self, pubsub_cfg):
@@ -418,15 +516,18 @@ class Temperature(MicroServerComs,SampleCounter):
         self._send (secondary, rj)
 
     def _send(self, secondary, rj):
-        self.update_counts(secondary, rj)
-        #print ("temp %g"%(self.temperature))
+        if self.update_counts(secondary, rj):
+            print ("temp %.1f"%(self.temperature))
         self.publish()
+
+    def print_data(self):
+        print ("temp %.1f"%(self.temperature))
+        self.print_stats()
 
 class Pitot(MicroServerComs,SampleCounter):
     def __init__(self, pubsub_cfg):
         self.pitot = None
         self.timestamp = None
-        self.print_count = 0
         MicroServerComs.__init__(self, "RawPitotSensor", channel='pitotsensor', config=pubsub_cfg)
         SampleCounter.__init__(self, 10)
 
@@ -440,12 +541,14 @@ class Pitot(MicroServerComs,SampleCounter):
         self._send (secondary, rj, ts)
 
     def _send(self, secondary, rj, ts):
-        self.update_counts(secondary, rj)
-        self.timestamp = make_timestamp (ts)
-        self.print_count += 1
-        if self.print_count % 10 == 0:
+        if self.update_counts(secondary, rj):
             print ("pitot %.2f"%(self.pitot,))
+        self.timestamp = make_timestamp (ts)
         self.publish()
+
+    def print_data(self):
+        print ("pitot %.2f"%(self.pitot,))
+        self.print_stats()
 
 class GPS(MicroServerComs):
     def __init__(self, pubsub_cfg):
@@ -457,6 +560,7 @@ class GPS(MicroServerComs):
         self.gps_ground_track = None
         self.gps_signal_quality = None
         self.HaveNewPosition = False
+        self.enable_printing = False
         MicroServerComs.__init__(self, "GPSFeed", channel='gpsfeed', config=pubsub_cfg)
 
     def send(self, args):
@@ -466,15 +570,23 @@ class GPS(MicroServerComs):
                 self.gps_lat is not None:
             update_time_offset (self.gps_utc, ts)
             self.HaveNewPosition = False
-            print ("gps: %g,%g,%g,%g,%g,%g,%d"%(
-        self.gps_utc,
-        self.gps_lat,
-        self.gps_lng,
-        self.gps_altitude,
-        self.gps_ground_speed,
-        self.gps_ground_track,
-        self.gps_signal_quality))
+            if self.enable_printing:
+                self.print_vals()
             self.publish()
+
+    def print_vals(self):
+        print ("gps: %.1f,%.5f,%.5f,%.1f,%.1f,%.1f,%d"%(
+                self.gps_utc,
+                self.gps_lat,
+                self.gps_lng,
+                self.gps_altitude,
+                self.gps_ground_speed,
+                self.gps_ground_track,
+                self.gps_signal_quality))
+
+    def print_data(self):
+        self.print_vals()
+        self.print_stats()
 
 time_offset = 0
 
@@ -488,6 +600,43 @@ def make_timestamp (board_ts):
         return time.time()
     else:
         return float(board_ts)/1000.0 + time_offset
+
+slave = None
+
+class hmi(Cmd):
+    prompt = 'sensors: '
+    def __init__(self, slave):
+        Cmd.__init__(self)
+        self.stop = False
+        self.slave = slave
+
+    def do_print(self, args):
+        '''Print a summary of a sensor.
+        Sensors can be: temp, pressure, accelerometers, gyro,
+                        magnetometer, pitot.
+        '''
+        self.slave.print_sensor (args)
+
+    def do_quit(self, args):
+        'Exit the program'
+        self.stop = True
+        return True
+
+    def do_mod(self, args):
+        '''Modify a sensor parameter. Syntax: mod sensor_func parm_name val
+        sensor_func matches one of the function args from the configuration,
+            which is the second sensor config argument
+        parm_name is one of: polling period (ms), f0, f1, sband,
+                             rejection_band, sduration
+        val is a floating point number representing the new value to use
+        '''
+
+        args = args.split()
+        if len(args) != 3:
+            print ("mod: Invalid number of arguments (should be 3)")
+            return False
+        self.slave.modify_sensor_parm (*tuple(args))
+
 
 if '__main__' == __name__:
     opt = argparse.ArgumentParser(description='Control/sensor slave process')
@@ -551,12 +700,17 @@ if '__main__' == __name__:
         assign_all_ports (pubsub_config, args.starting_port)
         yml.close()
     slave = SenseControlSlave(command_channel, config, pubsub_config)
-    while True:
+    command = hmi(slave)
+    cmd_thread = threading.Thread (target=command.cmdloop)
+    cmd_thread.start()
+
+    while not command.stop:
         try:
             slave.ReadSensors()
         except Exception as e:
-            time.sleep(1)
             try:
+                _main_port.close()
+                time.sleep(1)
                 _main_port = serial.Serial(args.serial_port, 115200, timeout=0)
                 command_channel.StartComs (_main_port)
             except:

@@ -153,7 +153,13 @@ class MicroServerComs:
         if rfd in self.subchannels:
             s,mychname,from_chname,input_values,input_format,cfg_index = self.subchannels[rfd]
             data,addr = s.recvfrom(MAX_DATA_SIZE)
-            values_list = struct.unpack (input_format, data)
+            try:
+                values_list = struct.unpack (input_format, data)
+            except Exception as e:
+                print (
+                ("MSCom: receive unpack error for %s from %s (%s). Got %d bytes"%(
+                    self.function, from_chname, str(e), len(data))))
+                return
             if self.input_mode == 'injection':
                 timestamped = False
                 ts_name = from_chname + '_updated'

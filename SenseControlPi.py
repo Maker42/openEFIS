@@ -16,6 +16,7 @@
 
 import os
 import sys, time
+import threading
 
 import logging
 import argparse
@@ -27,7 +28,7 @@ import RPiSensors.sensors as sensors
 import Globals
 
 from SenseControlRemote import Accelerometers, Rotation, Magnetic
-from SenseControlRemote import Pressure, Temperature, GPS
+from SenseControlRemote import Pressure, Temperature, GPS, hmi
 
 from MicroServerComs import MicroServerComs
 from PubSub import assign_all_ports
@@ -85,6 +86,12 @@ class SenseControlSlave(MicroServerComs):
             self._rotation.send2(gyro, ts, stats,
                         self._calibrations.get('rotation'))
 
+    def modify_sensor_parm(self, sname, pname, val):
+        sensors.modify_sensor_parm (sname, pname, val)
+
+    def print_sensor(self, name):
+        sensors.print_sensor(name)
+
 if '__main__' == __name__:
     opt = argparse.ArgumentParser(description='Control/sensor slave process for Raspberry Pi')
     opt.add_argument('starting_port', type=int,
@@ -122,6 +129,10 @@ if '__main__' == __name__:
         assign_all_ports (pubsub_config, args.starting_port)
         yml.close()
     slave = SenseControlSlave(config, pubsub_config)
-    while True:
+    command = hmi(slave)
+    cmd_thread = threading.Thread (target=command.cmdloop)
+    cmd_thread.start()
+
+    while not command.stop:
         slave.ReadSensors()
         slave.listen (timeout=0.01, loop=False)

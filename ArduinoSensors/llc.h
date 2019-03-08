@@ -16,15 +16,16 @@ enum
 
 // Messages from this program to the board
 ,setup_digital_sensor          // channel, pin, polling period (ms)
-,setup_analog_sensor           // channel, pin, polling period (ms)
-,setup_i2c_sensor              // channel, function, polling period (ms)
-,setup_spi_sensor              // channel, function, polling period (ms)
+,setup_analog_sensor           // channel, pin, polling period (ms), filter_coefficients, secondary_band, rejection_band, secondary_duration
+,setup_i2c_sensor              // channel, function, polling period (ms), filter_coefficients, secondary_band, rejection_band, secondary_duration
+,setup_spi_sensor              // channel, function, polling period (ms), filter_coefficients, secondary_band, rejection_band, secondary_duration
 ,setup_serial_sensor           // channel, function, txpin, rxpin, polling period (ms)
 ,setup_analog_output           // pin, initial_value
 ,setup_digital_output          // pin, initial_value
 ,set_analog_output             // pin, value
 ,set_digital_output            // pin, value
 ,save_configuration            // nchans
+,update_sensor                 // channel, polling period (ms), filter_coefficients, secondary_band, rejection_band, secondary_duration
 };
 
 //

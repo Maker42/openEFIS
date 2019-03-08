@@ -333,6 +333,31 @@ void Onsetup_i2c_sensor()
   }
 }
 
+void Onupdate_sensor()
+{
+  int16_t   chan;
+
+  if (output_line[0] != 0)
+  {
+    cmdLog (50, output_line);
+    output_line[0] = 0;
+  }
+  chan = cmdMessenger.readInt16Arg();
+  if ((chan >= (int16_t)NELEMENTS(channels)) || (chan < 0))
+  {
+    cmdMessenger.sendCmd(nack, "Update Invalid channel");
+  } else
+  {
+      channels[chan].period = cmdMessenger.readInt32Arg();
+      channels[chan].filter_coefficient[0] = cmdMessenger.readFloatArg();
+      channels[chan].filter_coefficient[1] = cmdMessenger.readFloatArg();
+      channels[chan].secondary_band = cmdMessenger.readFloatArg();
+      channels[chan].rejection_band = cmdMessenger.readFloatArg();
+      channels[chan].secondary_filter_duration = (unsigned)cmdMessenger.readInt32Arg();
+      cmdMessenger.sendCmd(ack);
+  }
+}
+
 void Onsetup_spi_sensor()
 {
     cmdMessenger.sendCmd(nack, "SPI sensors unimplemented");
@@ -571,6 +596,7 @@ void attachCommandCallbacks()
   cmdMessenger.attach(set_analog_output, Onset_analog_output);
   cmdMessenger.attach(set_digital_output, Onset_digital_output);
   cmdMessenger.attach(save_configuration, Onsave_configuration);
+  cmdMessenger.attach(update_sensor, Onupdate_sensor);
   cmdMessenger.printLfCr(false); 
 }
 
