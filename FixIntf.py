@@ -81,17 +81,17 @@ def ReadWaypoints():
 
 def CreateWaypoints():
     for wp in range(256):
-        waypoint_id_db = fix.db.get_item(Globals.WAYPOINT_ID_KEY + str(wp), True)
+        waypoint_id_db = fix.db.get_item(Globals.WAYPOINT_ID_KEY + str(wp), create=True)
         waypoint_id_db.dtype = 'str'
-        waypoint_lat_db = fix.db.get_item(Globals.WAYPOINT_LAT_KEY + str(wp), True)
+        waypoint_lat_db = fix.db.get_item(Globals.WAYPOINT_LAT_KEY + str(wp), create=True)
         waypoint_lat_db.dtype = 'float'
         waypoint_lat_db.min = -90.0
         waypoint_lat_db.max =  90.0
-        waypoint_lng_db = fix.db.get_item(Globals.WAYPOINT_LNG_KEY + str(wp), True)
+        waypoint_lng_db = fix.db.get_item(Globals.WAYPOINT_LNG_KEY + str(wp), create=True)
         waypoint_lng_db.dtype = 'float'
         waypoint_lng_db.min = -180.0
         waypoint_lng_db.max =  180.0
-        waypoint_alt_db = fix.db.get_item(Globals.WAYPOINT_ALT_KEY + str(wp), True)
+        waypoint_alt_db = fix.db.get_item(Globals.WAYPOINT_ALT_KEY + str(wp), create=True)
         waypoint_alt_db.dtype = 'float'
         waypoint_alt_db.min = -1000.0
         waypoint_alt_db.max =  60000.0
@@ -154,78 +154,84 @@ def start(airplane_config, snd_bk_snsrs=True):
     craft = Airplane.Airplane()
     craft.initialize(rlines)
 
-    pitchdb = fix.db.get_item(Globals.FD_PITCH_KEY, True)
+    pitchdb = fix.db.get_item(Globals.FD_PITCH_KEY, create=True)
     pitchdb.min = -90
     pitchdb.max = 90
-    rolldb = fix.db.get_item(Globals.FD_ROLL_KEY, True)
+    rolldb = fix.db.get_item(Globals.FD_ROLL_KEY, create=True)
     rolldb.min = -90
     rolldb.max = 90
 
-    altitude_source_db = fix.db.get_item(Globals.ALTITUDE_SOURCE_KEY, True)
+    altitude_source_db = fix.db.get_item(Globals.ALTITUDE_SOURCE_KEY, create=True)
     altitude_source_db.dtype = 'int'
     altitude_source = altitude_source_db.value
     altitude_source_db.valueChanged[int].connect(ALTITUDE_SOURCE_changed)
-    selected_altitude_db = fix.db.get_item(Globals.SELECTED_ALTITUDE_KEY, True)
+    selected_altitude_db = fix.db.get_item(Globals.SELECTED_ALTITUDE_KEY, create=True)
     selected_altitude_db.dtype = 'int'
     selected_altitude_db.min = -1000
     selected_altitude_db.max = 60000
     selected_altitude_db.value = 10000
     selected_altitude = selected_altitude_db.value
     selected_altitude_db.valueChanged[int].connect(SELECTED_ALTITUDE_changed)
-    selected_airspeed_db = fix.db.get_item(Globals.SELECTED_AIRSPEED_KEY, True)
+    selected_airspeed_db = fix.db.get_item(Globals.SELECTED_AIRSPEED_KEY, create=True)
     selected_airspeed_db.dtype = 'int'
     selected_airspeed_db.min = 10
     selected_airspeed_db.max = 1000
     selected_airspeed_db.value = 120
     selected_airspeed = selected_airspeed_db.value
     selected_airspeed_db.valueChanged[int].connect(SELECTED_AIRSPEED_changed)
-    selected_heading_db = fix.db.get_item(Globals.SELECTED_HEADING_KEY, True)
+    selected_heading_db = fix.db.get_item(Globals.SELECTED_HEADING_KEY, create=True)
     selected_heading_db.dtype = 'int'
     selected_heading_db.min = 0
     selected_heading_db.max =  359
     selected_heading = selected_heading_db.value
     selected_heading_db.valueChanged[int].connect(SELECTED_HEADING_changed)
-    selected_climb_rate_db = fix.db.get_item(Globals.SELECTED_CLIMB_RATE_KEY, True)
+    selected_climb_rate_db = fix.db.get_item(Globals.SELECTED_CLIMB_RATE_KEY, create=True)
     selected_climb_rate_db.dtype = 'int'
     selected_climb_rate_db.min = -10000
     selected_climb_rate_db.max =  10000
     selected_climb_rate_db.value =  500
     selected_climb_rate = selected_climb_rate_db.value
     selected_climb_rate_db.valueChanged[int].connect(SELECTED_CLIMB_RATE_changed)
-    ap_on_db = fix.db.get_item(Globals.AP_ON_KEY, True)
+    ap_on_db = fix.db.get_item(Globals.AP_ON_KEY, create=True)
     ap_on_db.dtype = 'bool'
-    fd_on_db = fix.db.get_item(Globals.FD_ON_KEY, True)
+    fd_on_db = fix.db.get_item(Globals.FD_ON_KEY, create=True)
     fd_on_db.dtype = 'bool'
     ap_on_db.valueChanged[bool].connect(AP_ON_changed)
-    hnav_mode_db = fix.db.get_item(Globals.HNAV_MODE_KEY, True)
+    hnav_mode_db = fix.db.get_item(Globals.HNAV_MODE_KEY, create=True)
     hnav_mode_db.dtype = 'int'
     hnav_mode = hnav_mode_db.value
     hnav_mode_db.valueChanged[int].connect(HNAV_MODE_changed)
-    vnav_mode_db = fix.db.get_item(Globals.VNAV_MODE_KEY, True)
+    vnav_mode_db = fix.db.get_item(Globals.VNAV_MODE_KEY, create=True)
     vnav_mode_db.dtype = 'int'
     vnav_mode = vnav_mode_db.value
     vnav_mode_db.valueChanged[int].connect(VNAV_MODE_changed)
-    start_strategy_db = fix.db.get_item(Globals.START_STRATEGY_KEY, True)
+    start_strategy_db = fix.db.get_item(Globals.START_STRATEGY_KEY, create=True)
     start_strategy_db.dtype = 'int'
     start_strategy = start_strategy_db.value
     start_strategy_db.valueChanged[int].connect(START_STRATEGY_changed)
-    selected_turn_rate_db = fix.db.get_item(Globals.SELECTED_TURN_RATE_KEY, True)
+    selected_turn_rate_db = fix.db.get_item(Globals.SELECTED_TURN_RATE_KEY, create=True)
     selected_turn_rate = selected_turn_rate_db.value
-    selected_pitch_db = fix.db.get_item(Globals.SELECTED_PITCH_KEY, True)
+    selected_pitch_db = fix.db.get_item(Globals.SELECTED_PITCH_KEY, create=True)
     selected_pitch_db.dtype = 'int'
     selected_pitch_db.min = 0
     selected_pitch_db.max = 40
     selected_pitch_db.value = 5
     selected_pitch = selected_pitch_db.value
     selected_pitch_db.valueChanged[int].connect(SELECTED_PITCH_changed)
-    selected_glideslope_db = fix.db.get_item(Globals.SELECTED_GLIDESLOPE_KEY, True)
+    selected_glideslope_db = fix.db.get_item(Globals.SELECTED_GLIDESLOPE_KEY, create=True)
     selected_glideslope = selected_glideslope_db.value
-    selected_waypoint_db = fix.db.get_item(Globals.SELECTED_WAYPOINT_KEY, True)
+    selected_waypoint_db = fix.db.get_item(Globals.SELECTED_WAYPOINT_KEY, create=True)
     selected_waypoint_db.dtype = 'int'
     selected_waypoint_db.min = 0
     selected_waypoint_db.max = 256
     selected_waypoint_db.value = 0
     selected_waypoint_db.valueChanged[int].connect(SELECTED_WAYPOINT_changed)
+    set0att = fix.db.get_item(Globals.SET_0ATTITUDE_KEY, create=True)
+    set0att.dtype = 'bool'
+    set0att.value = False
+    set0asp = fix.db.get_item(Globals.SET_0AIRSPEED_KEY, create=True)
+    set0asp.dtype = 'bool'
+    set0asp.value = False
 
     CreateWaypoints()
     waypoints, WP_altitudes = ReadWaypoints()
@@ -307,11 +313,12 @@ def thread_run( selected_altitude
 
 BARO_UPDATE_PERIOD=1.0
 last_baro_time = time.time()-BARO_UPDATE_PERIOD
+last_baro=0
 BAD_THRESHOLD=5.0
 FAIL_THRESHOLD=2.0
 
 def sensors_to_fix(sensors):
-    global last_baro_time, givenbarometer
+    global last_baro_time, last_baro, givenbarometer, craft
     PITCH = fix.db.get_item("PITCH")
     PITCH.value = sensors.Pitch()
     PITCH_conf = sensors.PitchConfidence()
@@ -380,6 +387,17 @@ def sensors_to_fix(sensors):
     HEAD.fail = True if HEAD_conf < FAIL_THRESHOLD else False
     HEAD.old = False
 
-    if last_baro_time+BARO_UPDATE_PERIOD < time.time():
+    baro = fix.db.get_item("BARO").value
+    if last_baro_time+BARO_UPDATE_PERIOD < time.time() or baro != last_baro:
         last_baro_time = time.time()
-        sensors.SendBarometer (fix.db.get_item("BARO").value)
+        last_baro = baro
+        sensors.SendBarometer (baro)
+
+    set0asp = fix.db.get_item(Globals.SET_0AIRSPEED_KEY)
+    if set0asp.value:
+        craft.Set0AirSpeed()
+        set0asp.value = False
+    set0att= fix.db.get_item(Globals.SET_0ATTITUDE_KEY)
+    if set0att.value:
+        craft.Set0Attitude()
+        set0att.value = False

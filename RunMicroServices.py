@@ -66,6 +66,14 @@ if __name__ == "__main__":
             help='YAML config file altitude calibration curve')
     opt.add_argument('-c', '--accelerometer-calibration', default='accelerometer_calibration.yml',
             help='YAML config file accelerometer calibration curve')
+    opt.add_argument('-y', '--yaw-multiplier', type=float, default=1.0,
+            help='a_x * yaw_multiplier = yaw reading')
+    opt.add_argument('-g', '--gyro-correction', type=float, default=1.0,
+         help='Degrees per minute roll and pitch drift toward computed flight estimates')
+    opt.add_argument('--roll-conf-mult', type=float, default=1.0,
+         help='roll confidence = degrees variation * roll_conf_mult')
+    opt.add_argument('--pitch-conf-mult', type=float, default=1.0,
+         help='pitch confidence = degrees variation * pitch_conf_mult')
     args = opt.parse_args()
 
     with open (args.pubsub_config, 'r') as yml:
@@ -74,11 +82,14 @@ if __name__ == "__main__":
         yml.close()
     InternalPublisher.TheInternalPublisher = InternalPublisher.InternalPublisher(
             MicroServerComs._pubsub_config)
-    airspeed_config = None
     if os.path.exists(args.airspeed_config):
         with open (args.airspeed_config, 'r') as yml:
             airspeed_config = yaml.load(yml)
             yml.close()
+    else:
+        airspeed_config = dict()
+    airspeed_config['rais_id'] = args.starting_port
+
     heading_calibration = None
     if os.path.exists(args.heading_calibration):
         with open (args.heading_calibration, 'r') as yml:
@@ -101,10 +112,10 @@ if __name__ == "__main__":
                 ,RollEstimate()
                 ,RollRateEstimate()
                 ,TurnRateComputed()
-                ,HeadingComputed(heading_calibration)
-                ,Pitch()
-                ,Roll()
-                ,Yaw()
+                ,HeadingComputed(heading_calibration, args.starting_port)
+                ,Pitch(args.gyro_correction, args.pitch_conf_mult)
+                ,Roll(args.gyro_correction, args.roll_conf_mult)
+                ,Yaw(accelerometer_calibration, args.yaw_multiplier)
                 ,Heading()
                 ,RollRate()
                 ,HeadingTasEstimate()

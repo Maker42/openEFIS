@@ -1,4 +1,4 @@
-# Copyright (C) 2018  Garrett Herschleb
+# Copyright (C) 2018-2019  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -13,6 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
+import math
 
 import Common.util as util
 from Common.Spatial import Polar
@@ -28,7 +29,6 @@ class HeadingTasEstimate(MicroServerComs):
         self.gps_ground_speed = None
         self.estimated_tas = None
         self.estimated_heading_true = None
-        self.gps_magnetic_variation = None
         # TODO: publish confidence level based on recency and relevance of inputs
 
     def updated(self, channel):
@@ -51,8 +51,8 @@ class HeadingTasEstimate(MicroServerComs):
             ground_vector.sub(wind_vector)       # ground vector now holds wind vector
             air_polar = Polar()
             air_polar.from3 (ground_vector, limit_phi=True, robot_coordinates=False)
-            self.estimated_heading_true = int(round(air_polar.theta * util.RAD_DEG))
-            self.estimated_tas = int(round(air_polar.rad))
+            self.estimated_heading_true = air_polar.theta * util.DEG_RAD
+            self.estimated_tas = air_polar.rad
             while self.estimated_heading_true < 0:
                 self.estimated_heading_true += 360
             self.publish ()

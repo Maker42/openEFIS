@@ -1,4 +1,4 @@
-# Copyright (C) 2018  Garrett Herschleb
+# Copyright (C) 2018-2019  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -17,16 +17,26 @@
 from MicroServerComs import MicroServerComs
 
 class Yaw(MicroServerComs):
-    def __init__(self, accel_factor=1.0):
+    def __init__(self, accelerometer_calibration, accel_factor):
+        self.accelerometer_calibration = accelerometer_calibration
         MicroServerComs.__init__(self, "Yaw")
         self.accel_factor = accel_factor
+        self.xoffset = 0
 
     def updated(self, channel):
-        self.yaw = self.a_x * self.accel_factor
-        self.timestamp = self.accelerometers_updated
-        self.yaw_confidence = 10.0
-        self.publish ()
-        print ("Yaw: %g => %g"%(self.a_x, self.yaw))
+        if channel == 'accelerometers':
+            if isinstance(self.accelerometer_calibration, dict):
+                self.a_x = util.rate_curve (self.a_x,
+                        self.accelerometer_calibration['x'])
+            self.a_x += self.xoffset
+            self.yaw = self.a_x * self.accel_factor
+            self.timestamp = self.accelerometers_updated
+            self.yaw_confidence = 10.0
+            self.publish ()
+            print ("Yaw: %g => %g"%(self.a_x, self.yaw))
+        elif channel == 'systemcommand':
+            if self.command.startswith( b'0att'):
+                self.xoffset = -self.a_x
 
 
 if __name__ == "__main__":

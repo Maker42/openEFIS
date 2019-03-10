@@ -95,11 +95,8 @@ class Sensors(MicroServerComs):
             cfg = pubsub_cfg
         assign_all_ports (cfg, starting_port)
         MicroServerComs.__init__(self, "Autopilot", config=cfg)
-        self.magnetic_variation = None
-        self._known_altitude = KnownAltitude(cfg)
-        self._flight_mode = FlightModeSource(cfg)
-        self._wind_report = WindsAloftReport(cfg)
-        self._given_barometer = GivenBarometer(cfg)
+        self.magnetic_declination = None
+        self._system_command = SystemCommand(cfg)
         self.altitude = None
         self.altitude_confidence = 0
         self.airspeed = None
@@ -128,22 +125,21 @@ class Sensors(MicroServerComs):
         self.gps_signal_quality = 0
         self.last_update_time = 0
 
-    def initialize(self, alt=None, wind=None):
-        if alt is not None:
-            self.KnownAltitude (alt)
-        self.wind_report = wind
+    def initialize(self, fl):
+        pass
 
     def FlightMode(self, mode, vertical = 1):
-        self._flight_mode.send (mode, vertical)
-
-    def KnownAltitude(self, alt):
-        self._known_altitude.send(alt)
+        self._system_command.send ('fmode', ' '.join([mode, str(vertical)]))
 
     def SendBarometer(self, b):
-        self._given_barometer.send (b)
+        self._system_command.send ('baroinhg', str(b))
 
     def WindsAloftReport(self, lat, lng, altitude, timestamp, direction, speed):
-        self._wind_report.send (lat, lng, altitude, timestamp, direction, speed)
+        self._system_command.send ('windsalft',
+                ' '.join([lat, lng, altitude, timestamp, direction, speed]))
+
+    def AtisWinds(self, speed, direction):
+        self._system_command.send ("atis", ' '.join([str(speed), str(direction)]))
 
     def Altitude(self):
         self.listen (timeout=0, loop=False)
@@ -224,15 +220,14 @@ class Sensors(MicroServerComs):
 
     def TrueHeading(self):
         self.listen (timeout=0, loop=False)
-        # TODO: compute magnetic_variation using geomag
-        if self.magnetic_variation is not None:
-            return self.heading + self.magnetic_variation
+        if self.magnetic_declination is not None:
+            return self.heading + self.magnetic_declination
         else:
             return self.heading
 
     def MagneticDeclination(self):
-        if self.magnetic_variation != None:
-            return self.magnetic_variation
+        if self.magnetic_declination != None:
+            return self.magnetic_declination
         else:
             return 0.0
 
@@ -250,17 +245,6 @@ class Sensors(MicroServerComs):
 
     def GroundSpeed(self):
         self.listen (timeout=0, loop=False)
-        if self.gps_ground_speed is not None and \
-                self.altitude is not None and \
-                self.wind_report is not None and \
-                self.wind_report[0] is not None:
-            direction,speed = self.wind_report
-            print ("Making wind report %s"%( str ((
-                    self.gps_lat, self.gps_lng, self.altitude,
-                    self.gps_utc, direction, speed)), ))
-            self.WindsAloftReport(self.gps_lat, self.gps_lng, self.altitude,
-                    self.gps_utc, direction, speed)
-            self.wind_report = None
         return self.gps_ground_speed
 
     def AGL(self):
@@ -282,6 +266,12 @@ class Sensors(MicroServerComs):
     def WaitSensorsGreen(self):
         while not self.Ready():
             time.sleep (.1)
+
+    def Set0AirSpeed (self):
+        self._system_command.send ('0airspeed', '')
+
+    def Set0Attitude (self):
+        self._system_command.send ('0attitude', '')
 
     def Ready(self):
         self.listen (timeout=0, loop=False)
@@ -306,17 +296,6 @@ class KnownAltitude(MicroServerComs):
         self.known_altitude = alt
         self.publish()
 
-class FlightModeSource(MicroServerComs):
-    def __init__(self, cfg):
-        self.flight_mode = None
-        self.vertical = None
-        MicroServerComs.__init__(self, "FlightModeSource", channel='flightmode', config=cfg)
-
-    def send(self, m, vertical):
-        self.flight_mode = bytes(m, 'ascii')
-        self.vertical = int(vertical)
-        self.publish()
-
 class WindsAloftReport(MicroServerComs):
     def __init__(self, cfg):
         MicroServerComs.__init__(self, "WindsAloftReport", channel='windsaloftreport', config=cfg)
@@ -330,14 +309,16 @@ class WindsAloftReport(MicroServerComs):
         self.wa_speed = speed
         self.publish()
 
-class GivenBarometer(MicroServerComs):
+class SystemCommand(MicroServerComs):
     def __init__(self, cfg=None):
-        self.given_barometer = None
-        MicroServerComs.__init__(self, "GivenBarometer", channel='givenbarometer', config=cfg)
+        self.command = None
+        self.args = None
+        MicroServerComs.__init__(self, "SystemCommand", channel='systemcommand', config=cfg)
 
-    def send(self, b):
-        self.given_barometer = b
-        # print ("Barometer %g published %s"%(b, str(self.pubchannel.getpeername())))
+    def send(self, c, a):
+        self.command = bytes(c, encoding='utf8')
+        self.args = bytes(a, encoding='utf8')
+        # print ("System Command %s(%s) published %s"%(c, a, str(self.pubchannel.getpeername())))
         self.publish()
 
 

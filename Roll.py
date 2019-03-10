@@ -1,4 +1,4 @@
-# Copyright (C) 2018  Garrett Herschleb
+# Copyright (C) 2018-2019  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -28,25 +28,22 @@ class Roll(MicroServerComs):
         # Default 1 degree per minute
         self.correction_rate = cor_rate / 60.0
         self.confidence_multiplier = conf_mult
+        self.vertical = False
 
     def updated(self, channel):
         if channel == 'rotationsensors':
             if self.last_time and self.flight_mode != Globals.FLIGHT_MODE_GROUND:
                 timediff = self.rotationsensors_updated - self.last_time
                 correction_factor = self.correction_rate * timediff
-                if self.roll_estimate is not None or \
-                        (self.vertical is None or (not self.vertical)):
-                    self.roll += (self.r_y * timediff +
-                                (self.roll_estimate - self.roll) * correction_factor)
-                else:
-                    self.roll += (self.r_y * timediff)
-                    self.roll_confidence = 5.0
-                if self.roll_estimate is not None or \
-                        (self.vertical is None or (not self.vertical)):
+                self.roll += (self.r_y * timediff)
+                self.roll_confidence = 7.0
+                if self.roll_estimate is not None and (not self.vertical):
+                    self.roll += (self.roll_estimate - self.roll) * correction_factor
                     variance = abs(self.roll - self.roll_estimate)
                     self.roll_confidence = 10.0 - variance * self.confidence_multiplier
                 self.timestamp = self.rotationsensors_updated
-                print ("Roll: %g => %g(%g)"%(self.r_y, self.roll, self.roll_confidence))
+                print ("Roll: %.2f => %.1f(%.1f)"%(self.r_y,
+                            self.roll, self.roll_confidence))
                 self.publish ()
             self.last_time = self.rotationsensors_updated
         elif channel == 'GroundRoll':
@@ -55,7 +52,13 @@ class Roll(MicroServerComs):
                 self.roll_confidence = 10.0 - self.roll * 0.5
                 self.timestamp = self.GroundRoll_updated
                 self.publish ()
-                print ("roll: (from estimate) %g => %g(%g)"%(self.ground_roll, self.roll, self.roll_confidence))
+                print ("roll: (from estimate) %.1f => %.1f(%.1f)"%(self.ground_roll,
+                        self.roll, self.roll_confidence))
+        elif channel == 'systemcommand':
+            if self.command.startswith( b'fmode'):
+                args = self.args.split()
+                self.flight_mode = args[0].decode('utf8')
+                self.vertical = bool(args[1].strip(b'\x00'))
 
 
 if __name__ == "__main__":

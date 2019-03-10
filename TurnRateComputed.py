@@ -1,3 +1,18 @@
+# Copyright (C) 2018-2019  Garrett Herschleb
+# 
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>
+
 
 from MicroServerComs import MicroServerComs
 
@@ -14,7 +29,12 @@ class TurnRateComputed(MicroServerComs):
         self.timestamp = self.HeadingComputed_updated
         if self.last_heading is not None:
             timediff = self.timestamp - self.last_time
-            current_heading_rate = (self.heading_computed - self.last_heading) / timediff
+            diff = (self.heading_computed - self.last_heading)
+            if diff > 180:
+                diff -= 360
+            elif diff < -180:
+                diff += 360
+            current_heading_rate = diff / timediff
             self.turn_rate_computed += self.filter_coefficient * (current_heading_rate - self.turn_rate_computed)
             self.publish ()
             print ("TurnRateComputed: %g => %g"%(self.heading_computed, self.turn_rate_computed))

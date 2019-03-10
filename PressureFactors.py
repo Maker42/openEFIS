@@ -28,7 +28,6 @@ class PressureFactors(MicroServerComs):
     def __init__(self, pressure_calibration):
         MicroServerComs.__init__(self, "PressureFactors")
         self.known_altitude = None
-        self.given_barometer = None
         self.static_pressure = None
         self.sea_level_pressure = None
         self.temperature = None
@@ -41,8 +40,13 @@ class PressureFactors(MicroServerComs):
         if channel == 'knownaltitude':
             if self.temperature is not None:
                 self.standard_sea_level_temp = self.temperature + 1.98 * self.known_altitude / 1000.0
-        elif channel == 'givenbarometer':
-            self.sea_level_pressure = (self.given_barometer * KPA_INHG)
+        elif channel == 'systemcommand':
+            print ("Got systemcommand: %s"%str(self.command))
+            if self.command.startswith(b'baroinhg'):
+                print ("Got new baro setting: %.2f"%float(self.args.strip(b'\x00')))
+                self.sea_level_pressure = (float(self.args.strip(b'\x00')) * KPA_INHG)
+            elif self.command.startswith( b'barompa'):
+                self.sea_level_pressure = (float(self.args.strip(b'\x00')) * 1000)
 
         if self.static_pressure is not None:
             if isinstance(self.pressure_calibration,dict):

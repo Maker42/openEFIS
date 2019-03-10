@@ -39,6 +39,10 @@ class RollRate(MicroServerComs):
             self.timestamp = self.rotationsensors_updated
             self.publish ()
             print ("roll_rate: %g => %g(%g)"%(self.r_y, self.roll_rate, self.roll_rate_confidence))
+        elif channel == 'systemcommand':
+            if self.command.startswith( b'fmode'):
+                args = self.args.split()
+                self.flight_mode = args[0].strip(b'\x00').decode('utf8')
 
 
 if __name__ == "__main__":

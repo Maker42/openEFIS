@@ -35,7 +35,7 @@ class RAISDiscriminator(MicroServerComs):
     VARIANCE_SCORE_WEIGHT=1.0
 
     def __init__(self, inputs_config, outputs_config):
-        MicroServerComs.__init__(self, "RAISDiscriminator", config=inputs_config)
+        MicroServerComs.__init__(self, "RAISDiscriminator", config=inputs_config, timeout=0)
         self.ninputs = len(inputs_config)
         self.gps_magnetic_variation = dict()
         self.altitude = dict()
@@ -84,9 +84,14 @@ class RAISDiscriminator(MicroServerComs):
         self.gps_lng = dict()
         self.gps_ground_speed = dict()
         self.gps_ground_track = dict()
+        self.magnetic_declination = dict()
         self.ground_vector_confidence = dict()
         self.GroundVector_updated = dict()
         self.GroundVector_updated_local_time = dict()
+        self.wind_heading = dict()
+        self.wind_speed = dict()
+        self.WindEstimate_updated = dict()
+        self.WindEstimate_updated_local_time = dict()
 
         self.history = dict()
         self.input_map = dict()
@@ -161,6 +166,8 @@ class RAISDiscriminator(MicroServerComs):
                             d[idx] = 0.0
                             for idx in range(self.ninputs):
                                 attr[idx] = 0
+                                self.append_history(idx, channel,
+                        (RAISDiscriminator.HIST_LOST_SIGNAL, time.time()))
                 for vname in self.input_map[channel]:
                     if 'confidence' in vname:
                         attr = getattr(self,vname)
@@ -168,6 +175,8 @@ class RAISDiscriminator(MicroServerComs):
                             if idx not in attr or attr[idx] != 0.0:
                                 needs_update = True
                                 attr[idx] = 0.0
+                                self.append_history(idx, channel,
+                        (RAISDiscriminator.HIST_LOST_SIGNAL, time.time()))
                 if needs_update:
                     print ("%s all lost. confidence 0."%channel)
                     self.output (channel)
@@ -294,19 +303,39 @@ class RAISPublisher:
             setattr (o, vname, getattr(self, invname))
         o.publish()
 
-class BaroDistributor(MicroServerComs):
+class SysCmdDistributor(MicroServerComs):
     def __init__(self, input_config, output_config):
-        MicroServerComs.__init__(self, "BaroDistributor", config=output_config)
+        MicroServerComs.__init__(self, "SysCmdDistributor",
+                    config=output_config)
         assert(isinstance(input_config,list))
         self.outputs = list()
         for ic in input_config:
-            self.outputs.append(MicroServerComs("GivenBarometer", channel="givenbarometer", config=ic))
+            self.outputs.append(MicroServerComs("SystemCommand",
+                    channel="systemcommand", config=ic))
 
     def updated(self, channel):
         for o in self.outputs:
-            o.given_barometer = self.given_barometer
+            o.command = self.command
+            o.args = self.args
             o.publish()
-            # print ("RAIS republishing barometer to %s"%str(o.pubchannel.getpeername()))
+            #print ("RAIS republishing %s(%s) to %s"%(o.command.decode('utf8'), o.args.decode('utf8'), str(o.pubchannel.getpeername())))
+
+class AdmCmdDistributor(MicroServerComs):
+    def __init__(self, input_config, output_config):
+        MicroServerComs.__init__(self, "AdmCmdDistributor",
+                    config=output_config)
+        assert(isinstance(input_config,list))
+        self.outputs = list()
+        for ic in input_config:
+            self.outputs.append(MicroServerComs("AdminCommand",
+                    channel="admincommand", config=ic))
+
+    def updated(self, channel):
+        for o in self.outputs:
+            o.command = self.command
+            o.args = self.args
+            o.publish()
+            print ("RAIS republishing admin command %s(%s) to %s"%(o.command.decode('utf8'), o.args.decode('utf8'), str(o.pubchannel.getpeername())))
 
 
 if __name__ == "__main__":
@@ -329,12 +358,14 @@ if __name__ == "__main__":
         starting_port = int(sys.argv[-2])
         output_config = yaml.load(outp)
         assign_all_ports(output_config, starting_port)
-        bd = BaroDistributor (input_config, output_config)
+        bd = SysCmdDistributor (input_config, output_config)
+        ac = AdmCmdDistributor (input_config, output_config)
         rd = RAISDiscriminator (input_config, output_config)
         all_lost_check_count = 0
         while True:
             rd.listen(timeout=0.05, loop=False)
             bd.listen(timeout=0.05, loop=False)
+            ac.listen(timeout=0.05, loop=False)
             all_lost_check_count += 1
             if all_lost_check_count >= 20:
                 all_lost_check_count = 0

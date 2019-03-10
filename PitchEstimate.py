@@ -1,4 +1,4 @@
-# Copyright (C) 2018  Garrett Herschleb
+# Copyright (C) 2018-2019  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -22,17 +22,25 @@ class PitchEstimate(MicroServerComs):
     def __init__(self, accelerometer_calibration):
         self.accelerometer_calibration = accelerometer_calibration
         MicroServerComs.__init__(self, "PitchEstimate")
+        self.yoffset = 0
 
     def updated(self, channel):
-        if self.a_z != 0:
-            if isinstance(self.accelerometer_calibration, dict):
-                self.a_x = util.rate_curve (self.a_x, self.accelerometer_calibration['x'])
-                self.a_y = util.rate_curve (self.a_y, self.accelerometer_calibration['y'])
-                self.a_z = util.rate_curve (self.a_z, self.accelerometer_calibration['z'])
-            self.pitch_estimate = math.atan(float(self.a_y) / float(self.a_z)) * util.DEG_RAD
-            self.timestamp = self.accelerometers_updated
-            self.publish ()
-            print ("PitchEstimate: %d,%d => %g"%(self.a_z, self.a_y, self.pitch_estimate))
+        if channel == 'accelerometers':
+            if self.a_z != 0:
+                if isinstance(self.accelerometer_calibration, dict):
+                    self.a_y = util.rate_curve (self.a_y,
+                            self.accelerometer_calibration['y'])
+                    self.a_z = util.rate_curve (self.a_z,
+                            self.accelerometer_calibration['z'])
+                self.a_y += self.yoffset
+                self.pitch_estimate = math.atan(float(self.a_y) / float(self.a_z)) * \
+                        util.DEG_RAD
+                self.timestamp = self.accelerometers_updated
+                self.publish ()
+                print ("PitchEstimate: %d,%d => %g"%(self.a_z, self.a_y, self.pitch_estimate))
+        elif channel == 'systemcommand':
+            if self.command.startswith( b'0att'):
+                self.yoffset = -self.a_y
 
 if __name__ == "__main__":
     pe = PitchEstimate()

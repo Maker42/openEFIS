@@ -1,4 +1,4 @@
-# Copyright (C) 2018  Garrett Herschleb
+# Copyright (C) 2018-2019  Garrett Herschleb
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -31,6 +31,7 @@ class MicroServerComs:
         self.has_external_listeners = False
         self.function = function
         self.multi_receiver = False
+        self.timeout = timeout
         if channel is None:
             self.channel = self.function
         else:
@@ -81,7 +82,7 @@ class MicroServerComs:
                                     self.pubchannel = socket.socket(type=socket.SOCK_DGRAM)
                                 else:
                                     self.pubchannel = socket.socket(type=socket.SOCK_STREAM)
-                                self.pubchannel.bind (('',port-1000))
+                                #self.pubchannel.bind (('',port-1000))
                                 self.pubchannel.connect ((addr,port))
                                 print ("Channel %s connecting to %s:%d"%(self.channel, addr, port))
             else:
@@ -127,7 +128,7 @@ class MicroServerComs:
                 try:
                     r,w,x = select.select (rsocks, [], xsocks, timeout)
                 except:
-                    print ("select error. rsocks=%s, xscoks=%s, timeout=%g"%(rsocks, xsocks, timeout))
+                    print ("select error. rsocks=%s, xsocks=%s, timeout=%g"%(rsocks, xsocks, timeout))
                     raise
             for errfd in x:
                 if errfd in self.subchannels:
@@ -139,7 +140,9 @@ class MicroServerComs:
             for rfd in r:
                 self.data_ready(rfd)
                 got_data = True
-            if not (loop or got_data):
+            if not loop:
+                break
+            if not got_data:
                 break
 
     def inject(self, attr, val, cfg_index):
@@ -152,33 +155,39 @@ class MicroServerComs:
     def data_ready(self, rfd):
         if rfd in self.subchannels:
             s,mychname,from_chname,input_values,input_format,cfg_index = self.subchannels[rfd]
-            data,addr = s.recvfrom(MAX_DATA_SIZE)
-            try:
-                values_list = struct.unpack (input_format, data)
-            except Exception as e:
-                print (
-                ("MSCom: receive unpack error for %s from %s (%s). Got %d bytes"%(
-                    self.function, from_chname, str(e), len(data))))
-                return
-            if self.input_mode == 'injection':
-                timestamped = False
-                ts_name = from_chname + '_updated'
-                for vname,value in zip(input_values,values_list):
-                    if vname == 'timestamp':
-                        # Special timestamp handling
-                        self.inject (ts_name, value, cfg_index)
-                        timestamped = True
-                        self.last_update_time = value
+            while True:
+                try:
+                    data,addr = s.recvfrom(MAX_DATA_SIZE)
+                except BlockingIOError:
+                    break
+                try:
+                    values_list = struct.unpack (input_format, data)
+                except Exception as e:
+                    print (
+                    ("MSCom: receive unpack error for %s from %s (%s). Got %d bytes"%(
+                        self.function, from_chname, str(e), len(data))))
+                    return
+                if self.input_mode == 'injection':
+                    timestamped = False
+                    ts_name = from_chname + '_updated'
+                    for vname,value in zip(input_values,values_list):
+                        if vname == 'timestamp':
+                            # Special timestamp handling
+                            self.inject (ts_name, value, cfg_index)
+                            timestamped = True
+                            self.last_update_time = value
+                        else:
+                            self.inject (vname, value, cfg_index)
+                    if not timestamped:
+                        self.inject (ts_name, time.time(), cfg_index)
+                    if self.multi_receiver:
+                        self.updated (from_chname, cfg_index)
                     else:
-                        self.inject (vname, value, cfg_index)
-                if not timestamped:
-                    self.inject (ts_name, time.time(), cfg_index)
-                if self.multi_receiver:
-                    self.updated (from_chname, cfg_index)
-                else:
-                    self.updated (from_chname)
-            else:   # Input list mode
-                self.input (from_chname, input_values, values_list)
+                        self.updated (from_chname)
+                else:   # Input list mode
+                    self.input (from_chname, input_values, values_list)
+                if self.timeout is None:
+                    break
 
     def publish(self,debug=False):
         if self.has_external_listeners:

@@ -488,6 +488,11 @@ class Airplane(FileConfig.FileConfig):
         self._flight_control.SelectedGlideSlope = x
     SelectedGlideSlope = property(getSelectedGlideSlope, setSelectedGlideSlope)
 
+    def Set0Attitude(self):
+        self._sensors.Set0Attitude()
+
+    def Set0AirSpeed(self):
+        self._sensors.Set0AirSpeed()
 
     def StraightAndLevel(self, dtime, desired_altitude=0, desired_airspeed=0, desired_heading=None):
         ret = "Flying Straight and Level for %g seconds, alt=%s, airspeed=%s, heading=%s"%(
@@ -591,7 +596,7 @@ class Airplane(FileConfig.FileConfig):
         if not self._was_moving and gs > 10:
             self._was_moving = True
         if self.CurrentFlightMode == Globals.FLIGHT_MODE_AIRBORN:
-            if self._sensors.AirSpeed() < 10:
+            if self._sensors.AirSpeed() < self.StallSpeed * .9:
                 print ("Now ground mode")
                 self.ChangeMode(Globals.FLIGHT_MODE_GROUND)
             if self.has_crashed():
@@ -608,9 +613,7 @@ class Airplane(FileConfig.FileConfig):
         elif self.CurrentFlightMode == Globals.FLIGHT_MODE_GROUND:
             if self._ground_control is not None: self._ground_control.Update()
             airspeed = self._sensors.AirSpeed()
-            if airspeed is None:
-                airspeed = 0
-            if airspeed > self.StallSpeed:
+            if airspeed is None and airspeed > self.StallSpeed:
                 self.ChangeMode(Globals.FLIGHT_MODE_AIRBORN)
         elif self.CurrentFlightMode == Globals.FLIGHT_MODE_LANDING:
             if self._landing_control is not None: self._landing_control.Update()

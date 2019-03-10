@@ -17,27 +17,28 @@
 # This is a module that injects the computed magnetic declination given
 # lat, long, alt, and date
 
+from geomag import declination
 
 from MicroServerComs import MicroServerComs
 
-class GroundVector(MicroServerComs):
-    def __init__(self, conf_mult=1.0):
-        MicroServerComs.__init__(self, "GroundVector")
+class MagneticDeclination(MicroServerComs):
+    def __init__(self, conf_mult=0.1):
+        MicroServerComs.__init__(self, "MagneticDeclination")
         self.gps_lat = None
         self.gps_lng = None
-        self.gps_ground_speed = None
-        self.gps_ground_track = None
-        self.gps_signal_quality = None
-        self.confidence_multiplier = conf_mult
+        self.gps_altitude = None
+        self.last_time = 0
         self.magnetic_declination = None
 
     def updated(self, channel):
-        if channel == 'gpsfeed':
-            self.ground_vector_confidence = self.gps_signal_quality * \
-                            self.confidence_multiplier
-        if self.magnetic_declination is not None and self.gps_lat is not None:
+        if self.gps_utc - self.last_time > 10:
+            self.last_time = self.gps_utc
+            self.magnetic_declination = declination (
+                    self.gps_lat, self.gps_lng, self.gps_altitude)
             self.publish ()
+            print ("Magnetic Declination: %.1f"%(self.magnetic_declination,))
+
 
 if __name__ == "__main__":
-    gv = GroundVector()
-    gv.listen()
+    magdcl = MagneticDeclination()
+    magdcl.listen()

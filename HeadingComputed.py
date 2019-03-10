@@ -19,22 +19,30 @@ import math
 from MicroServerComs import MicroServerComs
 
 class HeadingComputed(MicroServerComs):
-    def __init__(self, heading_calibration):
+    def __init__(self, heading_calibration, rais_id):
         self.heading_calibration = heading_calibration
         MicroServerComs.__init__(self, "HeadingComputed")
+        self.rais_id = rais_id
 
     def updated(self, channel):
-        theta = math.atan2 (self.m_y, self.m_x) - math.pi/2
-        mag_heading = theta * DEG_RAD
-        while mag_heading < 0:
-            mag_heading += 360
-        while mag_heading >= 360:
-            mag_heading -= 360
-        self.heading_computed = self._calibrated_heading (mag_heading)
-        self.timestamp = self.magneticsensors_updated
+        if channel == 'magneticsensors':
+            theta = math.atan2 (self.m_y, self.m_x) - math.pi/2
+            mag_heading = theta * DEG_RAD
+            while mag_heading < 0:
+                mag_heading += 360
+            while mag_heading >= 360:
+                mag_heading -= 360
+            self.heading_computed = self._calibrated_heading (mag_heading)
+            self.timestamp = self.magneticsensors_updated
 
-        self.publish ()
-        print ("HeadingComputed: %g,%g,%g => %g"%(self.m_z, self.m_y, self.m_x, self.heading_computed))
+            self.publish ()
+            print ("HeadingComputed: %g,%g,%g => %g"%(self.m_z, self.m_y, self.m_x, self.heading_computed))
+        elif channel == 'admincommand' and self.pitot is not None:
+            if self.command == b'heading':
+                given_file = 'given_heading%d.csv'%self.rais_id
+                f = open(given_file, 'a+')
+                f.write ('%.2f,%.1f\n'%(self.heading_computed, float(self.args)))
+                f.close()
 
     def _calibrated_heading(self, heading):
         # In each table, estimate the calibrated heading

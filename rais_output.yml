@@ -1,12 +1,21 @@
-givenbarometer:
+systemcommand:
+    # For things like:
+    # "fmode": flight mode (based on indicated airspeed),
+    #       args:
+    #           mode: which is one of: ground | airborn
+    #           vertical: True | False
+    # "0attitude": 0 out detected pitch and roll
+    # "0airspeed": 0 out airspeed indication
+    # "baroinhg": Set the barometer. args: baro in inches of mercury
+    # "barompa": Set the barometer. args: baro in mega pascals
   output_values:
-      - given_barometer
-  format: f
+      - command
+      - args
+  format: 10s40s
   pubs:
-  - {addr: localhost, protocol: udp, function: GivenBarometer}
+  - {addr: localhost, protocol: udp, function: SystemCommand}
   subs:
-  - {addr: localhost, protocol: udp, function: BaroDistributor}
-
+  - {addr: localhost, protocol: udp, function: SysCmdDistributor}
 
 #
 # Best guess computations
@@ -139,7 +148,8 @@ GroundVector:
         - gps_ground_speed
         - gps_ground_track
         - ground_vector_confidence
-    format: dddddf
+        - magnetic_declination
+    format: dddddff
     pubs:
       - {addr: localhost, protocol: udp, function: GroundVector}
     subs:
@@ -158,6 +168,18 @@ PitchRate:
     subs:
       - {addr: localhost, protocol: udp, function: Display}
       - {addr: localhost, protocol: udp, function: Autopilot}
+      - {addr: localhost, protocol: udp, function: EventDB}
+
+WindEstimate:
+    output_values:
+        - wind_heading
+        - wind_speed
+    format: ff
+    pubs:
+      - {addr: localhost, protocol: udp, function: WindEstimate}
+    subs:
+      - {addr: localhost, protocol: udp, function: Autopilot}
+      - {addr: localhost, protocol: udp, function: Display}
       - {addr: localhost, protocol: udp, function: EventDB}
 
 Autopilot:

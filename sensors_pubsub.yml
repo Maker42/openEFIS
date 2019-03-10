@@ -9,11 +9,11 @@ accelerometers:
       - a_z
   format: dfff
   pubs:
-  - {addr: 192.168.0.5, port: 49020, protocol: udp, function: RawAccelerometers}
+  - {addr: 192.168.0.6, protocol: udp, function: RawAccelerometers}
   subs:
-  - {addr: localhost, port: 49021, protocol: udp, function: Yaw}
-  - {addr: localhost, port: 49022, protocol: udp, function: PitchEstimate}
-  - {addr: localhost, port: 49023, protocol: udp, function: GroundRoll}
+  - {addr: localhost, protocol: udp, function: Yaw}
+  - {addr: localhost, protocol: udp, function: PitchEstimate}
+  - {addr: localhost, protocol: udp, function: GroundRoll}
 
 rotationsensors:
   # output in degrees per second
@@ -24,12 +24,12 @@ rotationsensors:
       - r_z
   format: dfff
   pubs:
-  - {addr: 192.168.0.5, port: 49030, protocol: udp, function: RawRotationSensors}
+  - {addr: 192.168.0.6, protocol: udp, function: RawRotationSensors}
   subs:
-  - {addr: localhost, port: 49031, protocol: udp, function: Pitch}
-  - {addr: localhost, port: 49032, protocol: udp, function: Roll}
-  - {addr: localhost, port: 49033, protocol: udp, function: RollRate}
-  - {addr: localhost, port: 49034, protocol: udp, function: PitchRate}
+  - {addr: localhost, protocol: udp, function: Pitch}
+  - {addr: localhost, protocol: udp, function: Roll}
+  - {addr: localhost, protocol: udp, function: RollRate}
+  - {addr: localhost, protocol: udp, function: PitchRate}
 
 magneticsensors:
   output_values:
@@ -39,32 +39,41 @@ magneticsensors:
       - m_z
   format: dfff
   pubs:
-  - {addr: 192.168.0.5, port: 49040, protocol: udp, function: RawMagneticSensors}
+  - {addr: 192.168.0.6, protocol: udp, function: RawMagneticSensors}
   subs:
-  - {addr: localhost, port: 49041, protocol: udp, function: HeadingComputed}
+  - {addr: localhost, protocol: udp, function: HeadingComputed}
 
 pressuresensors:
   output_values:
       - timestamp
       - static_pressure     # In Kilo Pascals
-      - pitot_pressure
-  format: dff
+  format: df
   pubs:
-  - {addr: 192.168.0.5, port: 49050, protocol: udp, function: RawPressureSensors}
+  - {addr: 192.168.0.6, protocol: udp, function: RawPressureSensors}
   subs:
-  - {addr: localhost, port: 49051, protocol: udp, function: PressureFactors}
-  - {addr: localhost, port: 49052, protocol: udp, function: AltitudeComputed}
-  - {addr: localhost, port: 49053, protocol: udp, function: AirspeedComputed}
+  - {addr: localhost, protocol: udp, function: PressureFactors}
+  - {addr: localhost, protocol: udp, function: AltitudeComputed}
+
+pitotsensor:
+  output_values:
+      - timestamp
+      - pitot
+  format: df
+  pubs:
+  - {addr: 192.168.0.6, protocol: udp, function: RawPitotSensor}
+  subs:
+  - {addr: localhost, protocol: udp, function: AirspeedComputed}
+
 
 temperaturesensors:
   output_values:
       - temperature     # In Celcius
   format: f
   pubs:
-  - {addr: 192.168.0.5, port: 49060, protocol: udp, function: RawTemperatureSensors}
+  - {addr: 192.168.0.6, protocol: udp, function: RawTemperatureSensors}
   subs:
-  - {addr: localhost, port: 49061, protocol: udp, function: PressureFactors}
-  - {addr: localhost, port: 49062, protocol: udp, function: AltitudeComputed}
+  - {addr: localhost, protocol: udp, function: PressureFactors}
+  - {addr: localhost, protocol: udp, function: AltitudeComputed}
 
 gpsfeed:
   output_values:
@@ -75,70 +84,87 @@ gpsfeed:
       - gps_ground_speed
       - gps_ground_track
       - gps_signal_quality
-  format: dddiiii
+  format: ddddddi
   pubs:
-  - {addr: 192.168.0.5, port: 49070, protocol: udp, function: GPSFeed}
+  - {addr: 192.168.0.6, protocol: udp, function: GPSFeed}
   subs:
-  - {addr: localhost, port: 49071, protocol: udp, function: TrackRate}
-  - {addr: localhost, port: 49072, protocol: udp, function: ClimbRateEstimate}
-  - {addr: localhost, port: 49073, protocol: udp, function: Altitude}
-  - {addr: localhost, port: 49074, protocol: udp, function: GroundVector}
-  - {addr: localhost, port: 49075, protocol: udp, function: HeadingTasEstimate}
+  - {addr: localhost, protocol: udp, function: TrackRate}
+  - {addr: localhost, protocol: udp, function: ClimbRateEstimate}
+  - {addr: localhost, protocol: udp, function: Altitude}
+  - {addr: localhost, protocol: udp, function: GroundVector}
+  - {addr: localhost, protocol: udp, function: HeadingTasEstimate}
 
-windsaloftreport:
+systemcommand:
+    # For things like:
+    # "fmode": flight mode (based on indicated airspeed),
+    #       args:
+    #           mode: which is one of: ground | airborn
+    #           vertical: True | False
+    # "0attitude": 0 out detected pitch and roll
+    # "0airspeed": 0 out airspeed indication
+    # "baroinhg": Set the barometer. args: baro in inches of mercury
+    # "barompa": Set the barometer. args: baro in mega pascals
+    # "atis": Pilot supplied wind vector
+    #       args:
+    #           wind_speed: (float) in knots
+    #           wind_direction: (float) in degrees magnetic
+    # "windsalft": Winds aloft report
+    # args:
+    #  wa_lat
+    #  wa_lng
+    #  wa_altitude
+    #  wa_time
+    #  wa_heading
+    #  wa_speed
   output_values:
-      - wa_lat
-      - wa_lng
-      - wa_altitude
-      - wa_time
-      - wa_heading
-      - wa_speed
-  format: ddidii
+      - command
+      - args
+  format: 10s40s
   pubs:
-  - {addr: localhost, port: 49080, protocol: udp, function: WindsAloftReport}
+  - {addr: localhost, protocol: udp, function: SystemCommand}
   subs:
-  - {addr: localhost, port: 49081, protocol: udp, function: WindEstimate}
+  - {addr: localhost, protocol: udp, function: PressureFactors} # for baro
+  - {addr: localhost, protocol: udp, function: Heading}     # for fmode
+  - {addr: localhost, protocol: udp, function: Pitch}       # for fmode
+  - {addr: localhost, protocol: udp, function: Roll}        # for fmode
+  - {addr: localhost, protocol: udp, function: RollRate}    # for fmode
+  - {addr: localhost, protocol: udp, function: GroundRoll}  # for 0att
+  - {addr: localhost, protocol: udp, function: PitchEstimate}  # for 0att
+  - {addr: localhost, protocol: udp, function: Yaw}         # for 0att
+  - {addr: localhost, protocol: udp, function: AirspeedComputed} # for 0airsp
+  - {addr: localhost, protocol: udp, function: WindEstimate}    # for ATIS
 
-knownaltitude:
+admincommand:
+    # For things like:
+    # "airspeed": Record a known airspeed for calibration
+    #       args: airspeed
+    # "heading": Record a known heading for calibration
+    #       args: heading (magnetic)
   output_values:
-      - known_altitude
-  format: i
+      - command
+      - args
+  format: 10s40s
   pubs:
-  - {addr: localhost, port: 49090, protocol: udp, function: KnownAltitude}
+  - {addr: localhost, protocol: udp, function: AdminCommand}
   subs:
-  - {addr: localhost, port: 49091, protocol: udp, function: PressureFactors}
-
-givenbarometer:
-  output_values:
-      - given_barometer
-  format: f
-  pubs:
-  #- {addr: localhost, port: 49100, protocol: udp, function: GivenBarometer}
-  # Commented out because the publisher is in the RAIS domain, while the receiver
-  # is in the microservices domain. Here we have to not list any publisher,
-  # any only list one subscriber, even though there are multiple subscribers in
-  # multiple sensor pipeline domains.
-  subs:
-  - {addr: localhost, port: 49101, protocol: udp, function: PressureFactors}
-
-flightmode:
-  output_values:
-      - flight_mode
-      - vertical
-  format: 10si
-  pubs:
-  - {addr: localhost, port: 49110, protocol: udp, function: FlightModeSource}
-  subs:
-  - {addr: localhost, port: 49111, protocol: udp, function: Heading}
-  - {addr: localhost, port: 49112, protocol: udp, function: Pitch}
-  - {addr: localhost, port: 49113, protocol: udp, function: Roll}
-  - {addr: localhost, port: 49114, protocol: udp, function: RollRate}
-  - {addr: localhost, port: 49115, protocol: udp, function: PitchRate}
-
+  - {addr: localhost, protocol: udp, function: AirspeedComputed}
+  - {addr: localhost, protocol: udp, function: HeadingComputed}
 
 #
 # Interim computations
 #
+
+MagneticDeclination:
+    output_values:
+        - magnetic_declination
+    format: f
+    pubs:
+      - {protocol: internal, function: MagneticDeclination}
+    subs:
+      - {protocol: internal, function: WindEstimate}
+      - {protocol: internal, function: HeadingTasEstimate}
+      - {protocol: internal, function: GroundVector}
+
 PitchEstimate:
     output_values:
         - timestamp
@@ -206,12 +232,13 @@ HeadingTasEstimate:
     output_values:
         - estimated_heading_true
         - estimated_tas
-    format: ii
+    format: ff
     pubs:
       - {protocol: internal, function: HeadingTasEstimate}
     subs:
       - {protocol: internal, function: Heading}
       - {protocol: internal, function: AirspeedEstimate}
+      - {protocol: internal, function: RollEstimate}
 
 AirspeedComputed:
     output_values:
@@ -222,6 +249,7 @@ AirspeedComputed:
       - {protocol: internal, function: AirspeedComputed}
     subs:
       - {protocol: internal, function: Airspeed}
+      - {protocol: internal, function: RollEstimate}
 
 AltitudeComputed:
     output_values:
@@ -265,11 +293,12 @@ WindEstimate:
     output_values:
         - wind_heading
         - wind_speed
-    format: ii
+    format: ff
     pubs:
       - {protocol: internal, function: WindEstimate}
     subs:
       - {protocol: internal, function: HeadingTasEstimate}
+      - {addr: localhost, protocol: udp, function: RAISDiscriminator}
 
 PressureFactors:
     output_values:
@@ -282,12 +311,12 @@ PressureFactors:
       - {protocol: internal, function: AirspeedEstimate}
       - {protocol: internal, function: WindEstimate}
       - {protocol: internal, function: AltitudeComputed}
+      - {protocol: internal, function: RollEstimate}
 
 
 #
 # Best guess computations
 #
-
 
 Yaw:
     output_values:
@@ -296,9 +325,9 @@ Yaw:
         - yaw_confidence
     format: dff
     pubs:
-      - {addr: localhost, port: 48010, protocol: udp, function: Yaw}
+      - {addr: localhost, protocol: udp, function: Yaw}
     subs:
-      - {addr: localhost, port: 48011, protocol: udp, function: RAISDiscriminator}
+      - {addr: localhost, protocol: udp, function: RAISDiscriminator}
 
 Pitch:
     output_values:
@@ -307,9 +336,9 @@ Pitch:
         - pitch_confidence
     format: dff
     pubs:
-      - {addr: localhost, port: 48020, protocol: udp, function: Pitch}
+      - {addr: localhost, protocol: udp, function: Pitch}
     subs:
-      - {addr: localhost, port: 48021, protocol: udp, function: RAISDiscriminator}
+      - {addr: localhost, protocol: udp, function: RAISDiscriminator}
 
 
 Roll:
@@ -319,9 +348,9 @@ Roll:
         - roll_confidence
     format: dff
     pubs:
-      - {addr: localhost, port: 48030, protocol: udp, function: Roll}
+      - {addr: localhost, protocol: udp, function: Roll}
     subs:
-      - {addr: localhost, port: 48031, protocol: udp, function: RAISDiscriminator}
+      - {addr: localhost, protocol: udp, function: RAISDiscriminator}
 
 Heading:
     output_values:
@@ -330,9 +359,9 @@ Heading:
         - heading_confidence
     format: dff
     pubs:
-      - {addr: localhost, port: 48040, protocol: udp, function: Heading}
+      - {addr: localhost, protocol: udp, function: Heading}
     subs:
-      - {addr: localhost, port: 48041, protocol: udp, function: RAISDiscriminator}
+      - {addr: localhost, protocol: udp, function: RAISDiscriminator}
       - {protocol: internal, function: WindEstimate}
 
 TurnRate:
@@ -342,9 +371,9 @@ TurnRate:
         - turn_rate_confidence
     format: dff
     pubs:
-      - {addr: localhost, port: 48050, protocol: udp, function: TurnRate}
+      - {addr: localhost, protocol: udp, function: TurnRate}
     subs:
-      - {addr: localhost, port: 48051, protocol: udp, function: RAISDiscriminator}
+      - {addr: localhost, protocol: udp, function: RAISDiscriminator}
 
 RollRate:
     output_values:
@@ -353,9 +382,9 @@ RollRate:
         - roll_rate_confidence
     format: dff
     pubs:
-      - {addr: localhost, port: 48060, protocol: udp, function: RollRate}
+      - {addr: localhost, protocol: udp, function: RollRate}
     subs:
-      - {addr: localhost, port: 48061, protocol: udp, function: RAISDiscriminator}
+      - {addr: localhost, protocol: udp, function: RAISDiscriminator}
 
 Airspeed:
     output_values:
@@ -365,9 +394,9 @@ Airspeed:
         - airspeed_confidence
     format: diff
     pubs:
-      - {addr: localhost, port: 48070, protocol: udp, function: Airspeed}
+      - {addr: localhost, protocol: udp, function: Airspeed}
     subs:
-      - {addr: localhost, port: 48071, protocol: udp, function: RAISDiscriminator}
+      - {addr: localhost, protocol: udp, function: RAISDiscriminator}
       - {protocol: internal, function: WindEstimate}
 
 ClimbRate:
@@ -377,9 +406,9 @@ ClimbRate:
         - climb_rate_confidence
     format: dff
     pubs:
-      - {addr: localhost, port: 48080, protocol: udp, function: ClimbRate}
+      - {addr: localhost, protocol: udp, function: ClimbRate}
     subs:
-      - {addr: localhost, port: 48081, protocol: udp, function: RAISDiscriminator}
+      - {addr: localhost, protocol: udp, function: RAISDiscriminator}
 
 Altitude:
     output_values:
@@ -388,9 +417,9 @@ Altitude:
         - altitude_confidence
     format: dff
     pubs:
-      - {addr: localhost, port: 48090, protocol: udp, function: Altitude}
+      - {addr: localhost, protocol: udp, function: Altitude}
     subs:
-      - {addr: localhost, port: 48091, protocol: udp, function: RAISDiscriminator}
+      - {addr: localhost, protocol: udp, function: RAISDiscriminator}
 
 GroundVector:
     output_values:
@@ -400,11 +429,12 @@ GroundVector:
         - gps_ground_speed
         - gps_ground_track
         - ground_vector_confidence
-    format: dddiif
+        - magnetic_declination
+    format: dddddff
     pubs:
-      - {addr: localhost, port: 48100, protocol: udp, function: GroundVector}
+      - {addr: localhost, protocol: udp, function: GroundVector}
     subs:
-      - {addr: localhost, port: 48101, protocol: udp, function: RAISDiscriminator}
+      - {addr: localhost, protocol: udp, function: RAISDiscriminator}
       - {protocol: internal, function: WindEstimate}
 
 PitchRate:
@@ -414,19 +444,17 @@ PitchRate:
         - pitch_rate_confidence
     format: dff
     pubs:
-      - {addr: localhost, port: 48110, protocol: udp, function: PitchRate}
+      - {addr: localhost, protocol: udp, function: PitchRate}
     subs:
-      - {addr: localhost, port: 48111, protocol: udp, function: RAISDiscriminator}
-
+      - {addr: localhost, protocol: udp, function: RAISDiscriminator}
 
 Control:
     output_values:
         - channel
         - value
-        - engaged
-    format: iii
+    format: ii
     pubs:
-      - {addr: localhost, port: 48120, protocol: udp, function: Control}
+      - {addr: localhost, protocol: udp, function: Control}
     subs:
-      - {addr: 192.168.0.7, port: 48121, protocol: udp, function: ControlSlave}
+      - {addr: 192.168.0.8, protocol: udp, function: ControlSlave}
 

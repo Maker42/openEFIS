@@ -45,7 +45,10 @@ class Heading(MicroServerComs):
             if self.gps_magnetic_variation is not None:
                 self.publish ()
                 print ("Heading: %g(%g)"%(self.heading, self.heading_confidence))
-
+        elif channel == 'systemcommand':
+            if self.command.startswith( b'fmode'):
+                args = self.args.split()
+                self.flight_mode = args[0].strip(b'\x00').decode('utf8')
 
 if __name__ == "__main__":
     heading = Heading()

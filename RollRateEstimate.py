@@ -31,7 +31,7 @@ class RollRateEstimate(MicroServerComs):
             current_roll_rate = (self.roll_estimate - self.last_roll) / timediff
             self.roll_rate_estimate = util.LowPassFilter (current_roll_rate, self._roll)
             self.publish ()
-            print ("RollRateEstimate: %g => %g"%(self.roll_estimate, self.roll_rate_estimate))
+            print ("RollRateEstimate: %.1f => %.2f"%(self.roll_estimate, self.roll_rate_estimate))
         self.last_time = self.timestamp
         self.last_roll = self.roll_estimate
 
