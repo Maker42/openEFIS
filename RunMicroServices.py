@@ -95,16 +95,19 @@ if __name__ == "__main__":
         with open (args.heading_calibration, 'r') as yml:
             heading_calibration = yaml.load(yml)
             yml.close()
+        heading_calibration['rais_id'] = args.starting_port
     pressure_calibration = None
     if os.path.exists(args.pressure_calibration):
         with open (args.pressure_calibration, 'r') as yml:
             pressure_calibration = yaml.load(yml)
             yml.close()
+        pressure_calibration['rais_id'] = args.starting_port
     accelerometer_calibration = None
     if os.path.exists(args.accelerometer_calibration):
         with open (args.accelerometer_calibration, 'r') as yml:
             accelerometer_calibration = yaml.load(yml)
             yml.close()
+        accelerometer_calibration['rais_id'] = args.starting_port
 
     service_objects = [
                  PitchEstimate(accelerometer_calibration)

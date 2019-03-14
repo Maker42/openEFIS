@@ -1,10 +1,10 @@
-accelerometers: [sensor_i2c, a, 100, .01, .1, 0.5, 10.0, 30]     # Accelerometer on the I2C bus, 100ms sample period
-gyros:          [sensor_i2c, r, 100, .01, .1, 0.5, 45.0, 30]
-magnetic:       [sensor_i2c, m, 400, .01, .1, 0.8, 10.0, 100]
-pressure:       [sensor_i2c, p, 800, .01, .1, 15.0, 50.0, 30]
-temperature:    [sensor_i2c, t, 1000,.01, .1, 0.2, 1.0, 30]
+accelerometers: [sensor_i2c, a, 100, .01, .05, 0.3, 10.0, 30]     # Accelerometer on the I2C bus, 100ms sample period
+gyros:          [sensor_i2c, r, 100, .01, .05, 0.5, 45.0, 30]
+magnetic:       [sensor_i2c, m, 400, .01, .05, 0.6, 10.0, 30]
+pressure:       [sensor_i2c, p, 800, .01, .05, 12.0, 50.0, 30]
+temperature:    [sensor_i2c, t, 1000,.01, .05, 0.2, 1.0, 30]
 gps:            [sensor_serial, g, 1, ubx]
-pitot:          [sensor_analog, 0, 100,.01,.1, 50, 300,  30]
+pitot:          [sensor_analog, 0, 100,.01,.1, 3, 30,  30]
 cal:
     rotation: [collect, 100, respond_heading]
     magnetic: [rotation,20,1.,1.]

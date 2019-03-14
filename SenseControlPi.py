@@ -74,9 +74,7 @@ class SenseControlSlave(MicroServerComs):
         magnetic,stats,ts = sensors.read_magnetic()
         if magnetic is not None:
             cal = self._calibrations.get('magnetic')
-            if cal is not None:
-                cal.append(self._rotation)
-            self._magnetic.send2(magnetic, ts, stats, cal)
+            self._magnetic.send2(magnetic, ts, stats, cal, self._rotation)
         accel,stats,ts = sensors.read_accelerometer()
         if accel is not None:
             self._accelerometers.send2(accel, ts, stats,
@@ -91,6 +89,9 @@ class SenseControlSlave(MicroServerComs):
 
     def print_sensor(self, name):
         sensors.print_sensor(name)
+
+    def collect_raw (self, sname, seconds, filename):
+        sensors.collect_raw (sname, seconds, filename)
 
 if '__main__' == __name__:
     opt = argparse.ArgumentParser(description='Control/sensor slave process for Raspberry Pi')

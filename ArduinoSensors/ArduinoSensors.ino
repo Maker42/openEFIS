@@ -658,14 +658,6 @@ void filter_channel (pChannel pch, int ninputs, float input[])
         if (adiff > pch->rejection_band)
         {   // Reject all inputs from this sample. They are all suspect
             pch->reject_count++;
-            if ((pch->reject_count > 9) && (pch->secondary_filter_count + pch->sample_count < pch->reject_count))
-            {
-              // Reset filter state
-              for (j = 0; j < ninputs; j++) pch->state[j] = input[j];
-              pch->sample_count = 0;
-              pch->reject_count = 0;
-              pch->secondary_filter_count = 0;
-            }
             return;
         }
         if (adiff > pch->secondary_band)
@@ -780,9 +772,13 @@ void loop()
         timediff = (long)pch->next_time - (long)ms;
         if (timediff <= 0)
         {
+            if (pch->reject_count > pch->sample_count)
+            {
+                pch->state[0] = pressure;
+            }
             cmdMessenger.sendCmdStart (sensor_reading);
             cmdMessenger.sendCmdArg (channel);
-            cmdMessenger.sendCmdArg (pch->state[0]);
+            cmdMessenger.sendCmdFloatArg (pch->state[0], 4);
             cmdMessenger.sendCmdArg (ms);
             cmdMessenger.sendCmdArg (pch->sample_count);
             cmdMessenger.sendCmdArg (pch->secondary_use_count);
@@ -817,6 +813,10 @@ void loop()
         filter_channel (pch, 1, &temperature);
         if (timediff <= 0)
         {
+            if (pch->reject_count > pch->sample_count)
+            {
+                pch->state[0] = temperature;
+            }
             //cmdLog (99, "T");
             cmdMessenger.sendCmdStart (sensor_reading);
             cmdMessenger.sendCmdArg (channel);
@@ -865,12 +865,18 @@ void loop()
         timediff = (long)pch->next_time - (long)ms;
         if (timediff <= 0)
         {
+            if (pch->reject_count > pch->sample_count)
+            {
+                pch->state[0] = gyroSensor.data.x;
+                pch->state[1] = gyroSensor.data.y;
+                pch->state[2] = gyroSensor.data.z;
+            }
             //cmdLog (99, "g");
             cmdMessenger.sendCmdStart (sensor_reading);
             cmdMessenger.sendCmdArg (channel);
-            cmdMessenger.sendCmdArg (pch->state[0]);
-            cmdMessenger.sendCmdArg (pch->state[1]);
-            cmdMessenger.sendCmdArg (pch->state[2]);
+            cmdMessenger.sendCmdFloatArg (pch->state[0], 4);
+            cmdMessenger.sendCmdFloatArg (pch->state[1], 4);
+            cmdMessenger.sendCmdFloatArg (pch->state[2], 4);
             cmdMessenger.sendCmdArg (ms);
             cmdMessenger.sendCmdArg (pch->sample_count);
             cmdMessenger.sendCmdArg (pch->secondary_use_count);
@@ -907,11 +913,17 @@ void loop()
         timediff = (long)pch->next_time - (long)ms;
         if (timediff <= 0)
         {
+            if (pch->reject_count > pch->sample_count)
+            {
+                pch->state[0] = event.orientation.x;
+                pch->state[1] = event.orientation.y;
+                pch->state[2] = event.orientation.z;
+            }
             cmdMessenger.sendCmdStart (sensor_reading);
             cmdMessenger.sendCmdArg (channel);
-            cmdMessenger.sendCmdArg (pch->state[0]);
-            cmdMessenger.sendCmdArg (pch->state[1]);
-            cmdMessenger.sendCmdArg (pch->state[2]);
+            cmdMessenger.sendCmdFloatArg (pch->state[0], 4);
+            cmdMessenger.sendCmdFloatArg (pch->state[1], 4);
+            cmdMessenger.sendCmdFloatArg (pch->state[2], 4);
             cmdMessenger.sendCmdArg (event.timestamp);
             cmdMessenger.sendCmdArg (pch->sample_count);
             cmdMessenger.sendCmdArg (pch->secondary_use_count);
@@ -950,12 +962,18 @@ void loop()
         timediff = (long)pch->next_time - (long)ms;
         if (timediff <= 0)
         {
+            if (pch->reject_count > pch->sample_count)
+            {
+                pch->state[0] = event.magnetic.x;
+                pch->state[1] = event.magnetic.y;
+                pch->state[2] = event.magnetic.z;
+            }
             //cmdLog (99, "M");
             cmdMessenger.sendCmdStart (sensor_reading);
             cmdMessenger.sendCmdArg (channel);
-            cmdMessenger.sendCmdArg (pch->state[0]);
-            cmdMessenger.sendCmdArg (pch->state[1]);
-            cmdMessenger.sendCmdArg (pch->state[2]);
+            cmdMessenger.sendCmdFloatArg (pch->state[0], 4);
+            cmdMessenger.sendCmdFloatArg (pch->state[1], 4);
+            cmdMessenger.sendCmdFloatArg (pch->state[2], 4);
             cmdMessenger.sendCmdArg (event.timestamp);
             cmdMessenger.sendCmdArg (pch->sample_count);
             cmdMessenger.sendCmdArg (pch->secondary_use_count);
@@ -1001,6 +1019,10 @@ void loop()
                 cmdMessenger.sendCmdArg (digitalRead(pch->pin));
             } else
             {
+                if (pch->reject_count > pch->sample_count)
+                {
+                    pch->state[0] = analogRead(pch->pin);
+                }
                 cmdMessenger.sendCmdArg (pch->state[0]);
             }
             cmdMessenger.sendCmdArg (ms);

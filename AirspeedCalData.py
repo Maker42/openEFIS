@@ -24,11 +24,12 @@ from PubSub import assign_all_ports
 
 class AirspeedCalData(MicroServerComs):
     def __init__(self, cfg):
-        MicroServerComs.__init__(self, "GivenAirspeed", channel='givenairspeed', config=cfg)
+        MicroServerComs.__init__(self, "AdminCommand", channel='admincommand', config=cfg)
 
     def send(self, a):
-        self.given_airspeed = a
-        print ("Airspeed %.1f published %s"%(a, str(self.pubchannel.getpeername())))
+        self.command = b'airspeed'
+        self.args = bytes(a, 'utf-8')
+        print ("Airspeed %s published %s"%(a, str(self.pubchannel.getpeername())))
         self.publish()
 
 if __name__ == "__main__":
@@ -43,4 +44,4 @@ if __name__ == "__main__":
         assign_all_ports (config, starting_port)
 
         aspd = AirspeedCalData (config)
-        aspd.send(ias)
+        aspd.send(sys.argv[3])

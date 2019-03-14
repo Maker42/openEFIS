@@ -14,12 +14,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-import sys, time
+import sys, os, time
+import logging
 
 import yaml
 
 from MicroServerComs import MicroServerComs
 from PubSub import assign_all_ports
+import Globals
 
 class RAISDiscriminator(MicroServerComs):
     LOST_SIGNAL_INTERVALS=10
@@ -178,7 +180,7 @@ class RAISDiscriminator(MicroServerComs):
                                 self.append_history(idx, channel,
                         (RAISDiscriminator.HIST_LOST_SIGNAL, time.time()))
                 if needs_update:
-                    print ("%s all lost. confidence 0."%channel)
+                    rootlogger.error ("%s all lost. confidence 0."%channel)
                     self.output (channel)
 
     def append_history(self, idx, channel, entry):
@@ -190,7 +192,7 @@ class RAISDiscriminator(MicroServerComs):
             self.history[channel][idx][-1] = entry
         else:
             self.history[channel][idx].append (entry)
-            print ("Channel %s[%d] %s"%(channel, idx, entry[0]))
+            rootlogger.info ("Channel %s[%d] %s"%(channel, idx, entry[0]))
 
 
     def get_latest_history(self, idx, channel):
@@ -205,7 +207,7 @@ class RAISDiscriminator(MicroServerComs):
     def update_discriminator(self, channel, idx):
         if self.favored_channel[channel] == None:
             self.favored_channel[channel] = idx    # Anything is better than nothing
-            print ("Initial input for %s = %d"%(channel, idx))
+            rootlogger.info ("Initial input for %s = %d"%(channel, idx))
         else:
             h = self.get_latest_history (self.favored_channel[channel], channel)
 
@@ -228,14 +230,14 @@ class RAISDiscriminator(MicroServerComs):
             if h[0] == RAISDiscriminator.HIST_CONFIDENCE_FAIL or \
                     h[0] == RAISDiscriminator.HIST_LOST_SIGNAL:
                 # Currently favored channel is suspect. See if there's another better
-                #print ("Reevaluating input for channel %s"%channel)
+                rootlogger.debug ("Reevaluating input for channel %s"%channel)
                 options = [(self.score_history(ad, channel) +
                             self.score_variance (d, ad, median), ad)
                                     for ad in self.history[channel].keys()]
                 options.sort(reverse=True)  # Descending scores, first is best
                 if self.favored_channel[channel] != options[0][1]:
                     self.favored_channel[channel] = options[0][1]
-                    print ("RAISDiscriminator: change favored input pipeline %s for %s"%(
+                    rootlogger.warning ("RAISDiscriminator: change favored input pipeline %s for %s"%(
                                 self.favored_channel[channel], channel))
 
     def score_history (self, idx, channel):
@@ -253,7 +255,7 @@ class RAISDiscriminator(MicroServerComs):
                 ret -= (10.0 - last_entry[1]) * RAISDiscriminator.CONFIDENCE_SCORE_FINAL_WEIGHT
             if last_entry[0] == RAISDiscriminator.HIST_LOST_SIGNAL:
                 ret -= RAISDiscriminator.LOST_SIGNAL_FINAL_SCORE_WEIGHT
-        #print ("channel %s[%d] history score %g"%(channel, idx, ret))
+        rootlogger.debug ("channel %s[%d] history score %g"%(channel, idx, ret))
         return ret
 
     def score_variance (self, d, idx, median):
@@ -262,10 +264,10 @@ class RAISDiscriminator(MicroServerComs):
                 variance = abs(d[idx] - median) / median
             else:
                 variance = abs(d[idx])
-            #print ("[%d] variance score %g"%(idx, variance))
+            rootlogger.debug ("[%d] variance score %g"%(idx, variance))
             return variance * RAISDiscriminator.VARIANCE_SCORE_WEIGHT
         else:
-            #print ("[%d] no variance score"%(idx, ))
+            rootlogger.debug ("[%d] no variance score"%(idx, ))
             return 0.0
 
     def output(self, channel):
@@ -282,8 +284,8 @@ class RAISDiscriminator(MicroServerComs):
                 setattr (self._publisher, attrname,
                     getattr(self, attrname)[favored_channel])
             except Exception as e:
-                print ("Error transferring data to the publisher for attribute %s: %s"%(attrname, str(e)))
-                print ("self.%s = %s"%(attrname, getattr(self, attrname)))
+                rootlogger.error ("Error transferring data to the publisher for attribute %s: %s"%(attrname, str(e)))
+                rootlogger.error ("self.%s = %s"%(attrname, getattr(self, attrname)))
         self._publisher.pub_channel (channel)
 
 class RAISPublisher:
@@ -335,7 +337,7 @@ class AdmCmdDistributor(MicroServerComs):
             o.command = self.command
             o.args = self.args
             o.publish()
-            print ("RAIS republishing admin command %s(%s) to %s"%(o.command.decode('utf8'), o.args.decode('utf8'), str(o.pubchannel.getpeername())))
+            rootlogger.debug ("RAIS republishing admin command %s(%s) to %s"%(o.command.decode('utf8'), o.args.decode('utf8'), str(o.pubchannel.getpeername())))
 
 
 if __name__ == "__main__":
@@ -354,6 +356,25 @@ if __name__ == "__main__":
                 assign_all_ports(cfg, starting_port)
                 input_config.append(cfg)
             get_port = True
+
+    rootlogger = logging.getLogger()
+    rootlogger.setLevel(1)
+
+    datestamp = Globals.datestamp()
+    log_prefix = os.path.join('Logs', 'RAIS', datestamp)
+    log_start = "RAIS Discriminator beginning with logging prefix %s"%log_prefix
+    try:
+        os.makedirs(log_prefix)
+    except:
+        pass
+    file_handler = logging.FileHandler(os.path.join(log_prefix, 'info.log'))
+    file_handler.setLevel(logging.DEBUG)
+    rootlogger.addHandler(file_handler)
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    rootlogger.addHandler(console_handler)
+    rootlogger.log(99, log_start)
+
     with open(sys.argv[-1], "r") as outp:
         starting_port = int(sys.argv[-2])
         output_config = yaml.load(outp)

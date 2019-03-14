@@ -37,7 +37,7 @@ class HeadingComputed(MicroServerComs):
 
             self.publish ()
             print ("HeadingComputed: %g,%g,%g => %g"%(self.m_z, self.m_y, self.m_x, self.heading_computed))
-        elif channel == 'admincommand' and self.pitot is not None:
+        elif channel == 'admincommand' and self.heading_computed is not None:
             if self.command == b'heading':
                 given_file = 'given_heading%d.csv'%self.rais_id
                 f = open(given_file, 'a+')

@@ -14,7 +14,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
 
-import time
+import time, copy
 
 from smbus import SMBus
 
@@ -33,6 +33,8 @@ class SensorChannel:
         self.last_sample_time = 0
         self.secondary_filter_count = 0
         self.reset_counts()
+        self.raw_collection_expiration = None
+        self.raw_collection_file = None
 
     def reset_counts(self):
         self.sample_count = 0
@@ -40,6 +42,15 @@ class SensorChannel:
         self.secondary_use_count = 0
 
     def filter_values (self, values):
+        if self.raw_collection_file is not None:
+            raw = ['%.4f'%a for a in values]
+            raw.append ('%.2f'%self.last_sample_time)
+            self.raw_collection_file.write(
+                    ','.join(raw) + '\n')
+            if time.time() >= self.raw_collection_expiration:
+                self.raw_collection_file.close()
+                self.raw_collection_file = None
+                print ("Raw collection complete.")
         if self.state is None:
             self.state = [v for v in values]
         else:
@@ -50,13 +61,7 @@ class SensorChannel:
             max_adiff = max(adiff)
             if max_adiff > self.bands[1]:
                 self.reject_count += 1
-                if ((self.reject_count > 9) and
-                    (self.secondary_filter_count + self.sample_count <
-                        self.reject_count)):
-                    # Reset filter state
-                    self.state = [v for v in values]
-                    self.reset_counts()
-                    return
+                return
             elif max_adiff > self.bands[0]: trigger_secondary = True
             if trigger_secondary: self.secondary_filter_count = 1
             if self.secondary_filter_count > 0:
@@ -73,13 +78,19 @@ class SensorChannel:
     def sample(self):
         values = self.sample_func()
         if values is not None:
-            self.filter_values (values)
             self.last_sample_time = time.time()
+            self.filter_values (values)
 
     def read(self):
         tm = time.time()
         if tm > self.next_time:
             stats = [self.sample_count, self.secondary_use_count, self.reject_count]
+            if self.reject_count > self.sample_count:
+                # Reset filter state
+                values = self.sample_func()
+                self.state = [v for v in values]
+                print ("channel reset state %s because reject_count(%d) > sample_count(%d)"%(
+                    str(self.state), self.reject_count, self.sample_count))
             self.reset_counts()
             self.next_time = tm + self.period
             return self.state,stats,self.last_sample_time
@@ -111,6 +122,18 @@ class SensorChannel:
 
     def print_data(self):
         print (str(self.state))
+
+    def save_config(self):
+        self.save_period = self.period
+        self.save_coefficients = copy.copy(self.coefficients)
+        self.save_bands = copy.copy(self.bands)
+        self.save_secondary_duration = self.secondary_duration
+
+    def restore_config(self):
+        self.period = self.save_period
+        self.coefficients = self.save_coefficients
+        self.bands = self.save_bands
+        self.secondary_duration = self.save_secondary_duration
 
 base_sensor_suite = dict()
 sensor_objects = dict()
@@ -202,6 +225,22 @@ def modify_sensor_parm(sname, pname, val):
         if chname.startswith(sname):
             if obj.update_sensor(pname, val):
                 print ("Update %s[%s] = %g"%(chname,pname,val))
+            return
+    else:
+        print ("Can't find sensor %s"%sname)
+
+def collect_raw (sname, seconds, filename):
+    global sensor_objects
+    try:
+        seconds = float(seconds)
+    except Exception as e:
+        print ("Invalid time: %s (%s)"%(seconds, str(e)))
+        return
+    for chname,obj in sensor_objects.items():
+        if chname.startswith(sname):
+            print ("collect_raw: begin")
+            obj.raw_collection_expiration = time.time() + seconds
+            obj.raw_collection_file = open(filename, 'a+')
             return
     else:
         print ("Can't find sensor %s"%sname)

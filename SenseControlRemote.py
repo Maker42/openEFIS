@@ -14,7 +14,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
 import os
-import sys,  math, time
+import sys,  math, time, copy
 from cmd import Cmd
 import threading
 
@@ -35,8 +35,6 @@ from NMEAParser import ParseNMEAStrings
 
 from MicroServerComs import MicroServerComs
 from PubSub import assign_all_ports
-
-logger=logging.getLogger(__name__)
 
 arduino_messages = [
 # Messages from sense/control board
@@ -84,6 +82,9 @@ class SenseControlSlave(MicroServerComs):
         self.engage_channel = None
         self.last_trace_report = time.time()
         self.trace_lines = list()
+        self.raw_collection_channel = None
+        self.raw_collection_expiration = None
+        self.raw_collection_file = None
         for config_term,cfg in self._config.items():
             if config_term.startswith ('cal'):
                 self._calibrations.update (cfg)
@@ -157,7 +158,19 @@ class SenseControlSlave(MicroServerComs):
             name, args, ts = cmd
             if name == 'sensor_reading':
                 ch = args[0]
-                if not ch in self._sensors:
+                if self.raw_collection_channel is not None and \
+                        ch == self.raw_collection_channel:
+                    values = [str(a) if type(a)==int else '%.4f'%a for a in args[1:-3]]
+                    self.raw_collection_file.write(
+                            ','.join(values) + '\n')
+                    if time.time() >= self.raw_collection_expiration:
+                        self.raw_collection_file.close()
+                        chnum = self.raw_collection_channel
+                        self.update_sensor (chnum, self._scfg[chnum])
+                        self.raw_collection_channel = None
+                        self.raw_collection_file = None
+                        print ("Raw collection complete.")
+                elif not ch in self._sensors:
                     rootlogger.error ("Invalid sensor channel received from board: %d"%ch)
                 else:
                     function = self._sensors[ch]
@@ -189,9 +202,7 @@ class SenseControlSlave(MicroServerComs):
             self._rotation.send (args,self._calibrations.get('rotation'))
         elif function == 'm':
             cal = self._calibrations.get('magnetic')
-            if cal is not None:
-                cal.append(self._rotation)
-            self._magnetic.send (args, cal)
+            self._magnetic.send (args, cal, self._rotation)
         elif function == 'p':
             self._pressure.send (args, self._calibrations.get('pressure'))
         elif function == 't':
@@ -211,13 +222,13 @@ class SenseControlSlave(MicroServerComs):
     def sensor_name2obj(self, name):
         if name.startswith('t'):
             return self._temperature
-        elif name.startswith('pi'):
+        elif name.startswith('i'):
             return self._pitot
-        elif name.startswith('pr'):
+        elif name.startswith('p'):
             return self._pressure
         elif name.startswith('a'):
             return self._accelerometers
-        elif name.startswith('g'):
+        elif name.startswith('r'):
             return self._rotation
         elif name.startswith('m'):
             return self._magnetic
@@ -271,6 +282,22 @@ class SenseControlSlave(MicroServerComs):
         self._scfg[chnum][pnum] = val
         self.update_sensor (chnum, self._scfg[chnum])
         print ("Sensor update sent")
+
+    def collect_raw (self, sname, seconds, filename):
+        chnum = self.sensor_name2chnum(sname)
+        if chnum < 0:
+            print ("Can't find sensor %s"%sname)
+            return
+        cfg = copy.copy (self._scfg[chnum])
+        print ("collect_raw: Starting confg = %s"%str(cfg))
+        cfg[3] = 1.0        # 1.0 filter coefficient translates to raw, unfiltered
+        cfg[4] = 1.0
+        cfg[5] = 9999999.0  # Set bands super high to stay just primary sampling
+        cfg[6] = 99999999.0
+        self.update_sensor (chnum, cfg)
+        self.raw_collection_expiration = time.time() + float(seconds)
+        self.raw_collection_file = open(filename, 'a+')
+        self.raw_collection_channel = chnum
 
 class SampleCounter():
     def __init__(self, pp=50):
@@ -396,14 +423,19 @@ class Rotation(MicroServerComs,SampleCounter):
                 self.samples[0].append (self.r_x)
                 self.samples[1].append (self.r_y)
                 self.samples[2].append (self.r_z)
+                if len(self.samples[0]) > self.cal_collection_count:
+                    del self.samples[0][0]
+                    del self.samples[1][0]
+                    del self.samples[2][0]
             self.r_x -= c_x
             self.r_y -= c_y
             self.r_z -= c_z
 
     def reset_bias(self):
-        mean = [sum(x) for x in self.samples]
-        self.current_bias = [x/len(self.samples[0]) for x in mean]
-        #print ("New rotation bias %s"%(str(self.current_bias)))
+        if len(self.samples[0]) > 10:
+            mean = [sum(x) for x in self.samples]
+            self.current_bias = [x/len(self.samples[0]) for x in mean]
+            #print ("New rotation bias %s"%(str(self.current_bias)))
 
     def reset_samples(self):
         self.samples = [list(), list(), list()]
@@ -422,21 +454,21 @@ class Magnetic(MicroServerComs,SampleCounter):
         MicroServerComs.__init__(self, "RawMagneticSensors", channel='magneticsensors', config=pubsub_cfg)
         SampleCounter.__init__(self)
 
-    def send(self, args, calibration):
+    def send(self, args, calibration, rotation):
         self.m_x, self.m_y, self.m_z, ts, self.sample_count, secondary, rj = args
-        self.calibrate(calibration)
+        self.calibrate(calibration, rotation)
         self._send (secondary, rj, ts)
 
-    def send2(self, values, ts, stats, calibration):
+    def send2(self, values, ts, stats, calibration, rotation):
         self.m_x, self.m_y, self.m_z = values
         self.sample_count, secondary, rj = stats
-        self.calibrate(calibration)
+        self.calibrate(calibration, rotation)
         self._send (secondary, rj, ts)
 
-    def calibrate(self, calibration):
+    def calibrate(self, calibration, rot_object):
         if calibration is not None and isinstance (calibration[0],str) and calibration[0] == 'rotation':
             if len(calibration) >= 5:
-                sample_count,max_sample_dev,max_trend_dev,rot_object = calibration[1:5]
+                sample_count,max_sample_dev,max_trend_dev = calibration[1:5]
                 self.samples[0].append (self.m_x)
                 self.samples[1].append (self.m_y)
                 self.samples[2].append (self.m_z)
@@ -610,12 +642,18 @@ class hmi(Cmd):
         self.stop = False
         self.slave = slave
 
+    def emptyline(self):
+        pass
+
     def do_print(self, args):
         '''Print a summary of a sensor.
         Sensors can be: temp, pressure, accelerometers, gyro,
                         magnetometer, pitot.
         '''
-        self.slave.print_sensor (args)
+        try:
+            self.slave.print_sensor (args)
+        except Exception as e:
+            print ("print: %s"%str(e))
 
     def do_quit(self, args):
         'Exit the program'
@@ -635,8 +673,36 @@ class hmi(Cmd):
         if len(args) != 3:
             print ("mod: Invalid number of arguments (should be 3)")
             return False
-        self.slave.modify_sensor_parm (*tuple(args))
+        try:
+            self.slave.modify_sensor_parm (*tuple(args))
+        except Exception as e:
+            print ("mod: %s"%str(e))
 
+    def do_p(self, args):
+        self.do_print (args)
+
+    def do_collect_raw(self, args):
+        ''' Collect raw data from a sensor for a time into a file.
+        Usage: collect_raw <sensor> <seconds> <filename>
+        '''
+        args = args.split()
+        if len(args) != 3:
+            print ("collect_raw: Invalid number of arguments (should be 3)")
+            return False
+        try:
+            self.slave.collect_raw (*tuple(args))
+        except Exception as e:
+            print ("collect_raw: %s"%str(e))
+
+    def do_save_config(self, args):
+        ''' Save the current configuration of all active sensors in yaml format.
+        Usage: save_config <filename>
+        '''
+        print ("Save config: ", str(self.slave._config))
+        with open(args, 'w') as yml:
+
+            yaml.dump(self.slave._config, yml)
+            yml.close()
 
 if '__main__' == __name__:
     opt = argparse.ArgumentParser(description='Control/sensor slave process')
@@ -647,9 +713,6 @@ if '__main__' == __name__:
     opt.add_argument('-p', '--pubsub-config', default='sensors_pubsub.yml', help='YAML config file coms configuration')
     opt.add_argument('--log-prefix', default=None, help = 'Over-ride logging prefix')
     opt.add_argument('-l', '--log-level', type=int, default=logging.WARNING, help = '1 = Maximum Logging. 100 = Absolute Silence. 40 = Errors only. 10 = Basic Debug')
-    opt.add_argument('-v', '--magnetic-variation', default=None, help='The magnetic variation(declination) of the current position')
-    opt.add_argument('-a', '--altitude', default=None, help='The currently known altitude')
-    opt.add_argument('-w', '--wind', help="Wind speed and direction 'speed_knots,dir_deg'")
     args = opt.parse_args()
 
     rootlogger = logging.getLogger()
@@ -679,19 +742,6 @@ if '__main__' == __name__:
     command_channel.StartComs (_main_port)
 
 
-    if args.wind:
-        try:
-            speed,dr = args.wind.split(',')
-            speed = float(speed)
-            dr = float(dr)
-            wv = Spatial.Vector(math.sin(dr * util.RAD_DEG) * speed, math.cos(dr * util.RAD_DEG) * speed, 0)
-            sensors.WindVector (wv)
-            rootlogger.info("Wind Vector = %s", str(wv))
-        except Exception as e:
-            rootlogger.error ("Invalid wind input: %s (%s)", args.wind, str(e))
-    else:
-        rootlogger.info("Wind = None")
-
     with open(args.config_file, 'r') as yml:
         config = yaml.load (yml)
         yml.close()
@@ -708,6 +758,7 @@ if '__main__' == __name__:
         try:
             slave.ReadSensors()
         except Exception as e:
+            raise
             try:
                 _main_port.close()
                 time.sleep(1)

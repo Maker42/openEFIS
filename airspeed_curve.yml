@@ -1,4 +1,2 @@
-airspeed_pressure_curve:
-    - [0.0,0.0]
-    - [544.0,0.0]
-    - [1024.0,500.0]
+intercept: 546.5
+A: .01

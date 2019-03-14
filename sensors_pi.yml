@@ -1,0 +1,40 @@
+sensors:
+    accel:
+        period: .1
+        filter_coefficient1: .01
+        filter_coefficient2: .1
+        secondary_band: 0.02
+        rejection_band: 1.0
+        secondary_filter_duration: 30
+    gyro:
+        period: .1
+        filter_coefficient1: .01
+        filter_coefficient2: .1
+        secondary_band: 0.2
+        rejection_band: 45.0
+        secondary_filter_duration: 30
+    magnet:
+        period: .4
+        filter_coefficient1: .01
+        filter_coefficient2: .1
+        secondary_band: 30.0
+        rejection_band: 120.0
+        secondary_filter_duration: 30
+    pressure:
+        period: .8
+        filter_coefficient1: .01
+        filter_coefficient2: .1
+        secondary_band: 15.0
+        rejection_band: 150.0
+        secondary_filter_duration: 30
+    temperature:
+        period: 1.0
+        filter_coefficient1: .01
+        filter_coefficient2: .1
+        secondary_band: 0.1
+        rejection_band: 1.0
+        secondary_filter_duration: 30
+ado: 0
+cal:
+    rotation: [collect, 100, respond_heading]
+    magnetic: [rotation,20,60.,30.]
