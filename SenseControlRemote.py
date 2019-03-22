@@ -232,6 +232,8 @@ class SenseControlSlave(MicroServerComs):
             return self._rotation
         elif name.startswith('m'):
             return self._magnetic
+        elif name.startswith('g'):
+            return self._gps
         else:
             return None
 
@@ -379,6 +381,8 @@ class Rotation(MicroServerComs,SampleCounter):
         self.current_bias = [0.0, 0.0, 0.0]
         self.samples = [list(), list(), list()]
         self.timestamp = None
+        self.max_sample_dev = 0
+        self.max_trend_dev = 0
         MicroServerComs.__init__(self, "RawRotationSensors", channel='rotationsensors', config=pubsub_cfg)
         SampleCounter.__init__(self)
 
@@ -403,45 +407,52 @@ class Rotation(MicroServerComs,SampleCounter):
     def calibrate(self, calibration):
         if calibration:
             if isinstance (calibration[0],str) and calibration[0] == 'collect':
-                if self.cal_collection_count < calibration [1]:
-                    self.current_bias [0] += self.r_x
-                    self.current_bias [1] += self.r_y
-                    self.current_bias [2] += self.r_z
-                    self.cal_collection_count += 1
-                    if self.cal_collection_count == calibration [1]:
-                        self.current_bias [0] /= self.cal_collection_count
-                        self.current_bias [1] /= self.cal_collection_count
-                        self.current_bias [2] /= self.cal_collection_count
-                    c_x = self.current_bias [0] / self.cal_collection_count
-                    c_y = self.current_bias [1] / self.cal_collection_count
-                    c_z = self.current_bias [2] / self.cal_collection_count
-                else:
-                    c_x, c_y, c_z = self.current_bias
+                self.samples[0].append (self.r_x)
+                self.samples[2].append (self.r_z)
+                self.max_sample_dev, self.max_trend_dev = calibration[2:4]
+                if len(self.samples[0]) >= calibration [1]:
+                    if is_calm(self.samples[0], self.max_sample_dev, self.max_trend_dev) or \
+                            self.current_bias[0] == 0:
+                        self.reset_bias(0)
+                    if is_calm(self.samples[2], self.max_sample_dev, self.max_trend_dev) or \
+                            self.current_bias[2] == 0:
+                        self.reset_bias(2)
+                    self.samples[0] = list()
+                    self.samples[2] = list()
+                c_x, c_y, c_z = self.current_bias
             else:
                 c_x, c_y, c_z = calibration
-            if len(calibration) >= 3 and calibration[2] == 'respond_heading':
-                self.samples[0].append (self.r_x)
-                self.samples[1].append (self.r_y)
-                self.samples[2].append (self.r_z)
-                if len(self.samples[0]) > self.cal_collection_count:
-                    del self.samples[0][0]
+            self.samples[1].append (self.r_y)
+            if len(calibration) >= 5 and calibration[4] == 'respond_heading':
+                if len(self.samples[1]) > calibration[1]:
                     del self.samples[1][0]
-                    del self.samples[2][0]
+                    if self.current_bias[1] == 0:
+                        self.reset_bias(1)
+            else:
+                if len(self.samples[1]) >= calibration[1]:
+                    self.max_sample_dev,self.max_trend_dev = calibration[2:4]
+                    if is_calm(self.samples[1], self.max_sample_dev, self.max_trend_dev) or \
+                            self.current_bias[1] == 0:
+                        self.reset_bias(1)
+                    self.samples[1] = list()
             self.r_x -= c_x
             self.r_y -= c_y
             self.r_z -= c_z
 
-    def reset_bias(self):
-        if len(self.samples[0]) > 10:
-            mean = [sum(x) for x in self.samples]
-            self.current_bias = [x/len(self.samples[0]) for x in mean]
+    def reset_bias(self, idx):
+        if len(self.samples[idx]) > 10 and \
+                is_calm(self.samples[idx], self.max_sample_dev, self.max_trend_dev):
+            mean = sum(self.samples[idx]) / len(self.samples[idx])
+            self.current_bias[idx] = mean
             #print ("New rotation bias %s"%(str(self.current_bias)))
 
     def reset_samples(self):
-        self.samples = [list(), list(), list()]
+        self.samples[1] = list()
 
     def print_data(self):
         print ("gyro %.4f,%.4f,%.4f"%(self.r_x, self.r_y, self.r_z))
+        if len(self.samples[0]) > 0:
+            print ("mean %.4f,%.4f,%.4f"%tuple([sum(s) / len(s) for s in self.samples]))
         self.print_stats()
 
 class Magnetic(MicroServerComs,SampleCounter):
@@ -466,24 +477,19 @@ class Magnetic(MicroServerComs,SampleCounter):
         self._send (secondary, rj, ts)
 
     def calibrate(self, calibration, rot_object):
-        if calibration is not None and isinstance (calibration[0],str) and calibration[0] == 'rotation':
-            if len(calibration) >= 5:
-                sample_count,max_sample_dev,max_trend_dev = calibration[1:5]
+        if calibration is not None and isinstance (calibration[0],str) and \
+                calibration[0] == 'rotation':
+            if len(calibration) >= 4:
+                sample_count,max_sample_dev,max_trend_dev = calibration[1:4]
                 self.samples[0].append (self.m_x)
                 self.samples[1].append (self.m_y)
                 self.samples[2].append (self.m_z)
                 if len(self.samples[0]) >= sample_count:
                     #print ("magnet samples = %s"%str(self.samples))
-                    mean = [sum(x)/len(self.samples[0]) for x in self.samples]
-                    deviation = [[abs(x-m) for x in samp] for samp,m in zip(self.samples,mean)]
-                    deviation = [max(x) for x in deviation]
-                    deviation = max(deviation)
-                    end_mean = [sum(x[-3:])/3 for x in self.samples]
-                    beg_mean = [sum(x[:3])/3 for x in self.samples]
-                    trend = [abs(e-b) for e,b in zip(end_mean,beg_mean)]
-                    max_trend = max(trend)
-                    if deviation < max_sample_dev and max_trend < max_trend_dev:
-                        rot_object.reset_bias()
+                    self.calm = [is_calm (s, max_sample_dev, max_trend_dev)
+                            for s in self.samples[:2]]
+                    if self.calm[0] and self.calm[1]:
+                        rot_object.reset_bias(1)    # 1 is the y/roll axis
                         #print ("reset rotation bias because %.4g<%.4g and %.4g<%.4g"%(
                         #            deviation, max_sample_dev,
                         #            max_trend, max_trend_dev))
@@ -502,6 +508,10 @@ class Magnetic(MicroServerComs,SampleCounter):
 
     def print_data(self):
         print ("magnet %.2f,%.2f,%.2f"%(self.m_x, self.m_y, self.m_z))
+        if len(self.samples[0]) > 0:
+            print ("mean %.4f,%.4f,%.4f"%tuple([sum(s) / len(s) for s in self.samples]))
+        if hasattr(self, 'calm'):
+            print ("calm %s,%s"%tuple(self.calm))
         self.print_stats()
 
 class Pressure(MicroServerComs,SampleCounter):
@@ -596,7 +606,11 @@ class GPS(MicroServerComs):
         MicroServerComs.__init__(self, "GPSFeed", channel='gpsfeed', config=pubsub_cfg)
 
     def send(self, args):
-        nmea_string,ts = args
+        try:
+            nmea_string,ts = args
+        except Exception as e:
+            rootlogger.error ("GPS args error (%s). Args=%s"%(str(e), args))
+            return
         ParseNMEAStrings (nmea_string, self)
         if self.HaveNewPosition and self.gps_ground_speed is not None and \
                 self.gps_lat is not None:
@@ -607,6 +621,9 @@ class GPS(MicroServerComs):
             self.publish()
 
     def print_vals(self):
+        if self.gps_utc is None or self.gps_ground_track is None:
+            print ("gps: No data available")
+            return
         print ("gps: %.1f,%.5f,%.5f,%.1f,%.1f,%.1f,%d"%(
                 self.gps_utc,
                 self.gps_lat,
@@ -618,7 +635,6 @@ class GPS(MicroServerComs):
 
     def print_data(self):
         self.print_vals()
-        self.print_stats()
 
 time_offset = 0
 
@@ -703,6 +719,19 @@ class hmi(Cmd):
 
             yaml.dump(self.slave._config, yml)
             yml.close()
+
+def is_calm(samples, max_sample_dev, max_trend_dev, end_size=10):
+    mean = sum(samples)/len(samples)
+    deviation = [abs(x-mean) for x in samples]
+    deviation = max(deviation)
+    end_count = int(round(float(len(samples)) * float(end_size) / 100.0))
+    if end_count > 0:
+        end_mean = sum(samples[-end_count:])/end_count
+        beg_mean = sum(samples[:end_count])/end_count
+        trend = abs(end_mean-beg_mean)
+    else:
+        trend = 0
+    return deviation < max_sample_dev and trend < max_trend_dev
 
 if '__main__' == __name__:
     opt = argparse.ArgumentParser(description='Control/sensor slave process')

@@ -89,7 +89,7 @@ class Sensors(MicroServerComs):
     def __init__(self, pubsub_cfg, starting_port):
         if isinstance(pubsub_cfg, str):
             with open (pubsub_cfg, 'r') as yml:
-                cfg = yaml.load (yml)
+                cfg = yaml.load (yml, Loader=yaml.SafeLoader)
                 yml.close()
         else:
             cfg = pubsub_cfg

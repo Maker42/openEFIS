@@ -176,10 +176,15 @@ def get_rate(current, desired, time_divisor, limits):
         rate = mn
     return rate
 
-def rate_curve(x, curve_pieces):
+def rate_curve(x, curve_pieces, mirrored_sign=True):
     last_piece = 0
-    sign = 1 if x >= 0 else -1
-    x = abs(x)
+    if mirrored_sign:
+        sign = 1 if x >= 0 else -1
+        x = abs(x)
+    else:
+        sign = 1
+    if x < curve_pieces[0][0]:
+        return sign*curve_pieces[0][1]
     for piece in range(1,len(curve_pieces)):
         if x >= curve_pieces[last_piece][0] and x < curve_pieces[piece][0]:
             x0 = curve_pieces[last_piece][0]
@@ -189,8 +194,8 @@ def rate_curve(x, curve_pieces):
                 y1 = curve_pieces[piece][1]
                 xpiece = (x - x0) / (x1 - x0)
                 y = xpiece * (y1 - y0) + y0
-                logger.log(3, "rate_curve: x=%g [%g,%g]==> %g ; y = %g [%g,%g]",
-                        x, x0, x1, xpiece, y, y0, y1)
+                logger.log(3, "rate_curve: x=%g [%g,%g]==> %g ; y = %g [%g,%g]"%(
+                        x, x0, x1, xpiece, y, y0, y1))
                 return sign * y
         last_piece = piece
     else:

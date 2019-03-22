@@ -149,6 +149,8 @@ admincommand:
   subs:
   - {addr: localhost, protocol: udp, function: AirspeedComputed}
   - {addr: localhost, protocol: udp, function: HeadingComputed}
+  - {addr: localhost, protocol: udp, function: Pitch}
+  - {addr: localhost, protocol: udp, function: Roll}
 
 #
 # Interim computations
@@ -339,6 +341,7 @@ Pitch:
       - {addr: localhost, protocol: udp, function: Pitch}
     subs:
       - {addr: localhost, protocol: udp, function: RAISDiscriminator}
+      - {protocol: internal, function: HeadingComputed}
 
 
 Roll:
@@ -351,6 +354,9 @@ Roll:
       - {addr: localhost, protocol: udp, function: Roll}
     subs:
       - {addr: localhost, protocol: udp, function: RAISDiscriminator}
+      - {protocol: internal, function: HeadingComputed}
+      - {protocol: internal, function: Pitch}
+      - {protocol: internal, function: PitchEstimate}
 
 Heading:
     output_values:

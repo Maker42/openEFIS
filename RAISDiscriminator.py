@@ -231,14 +231,19 @@ class RAISDiscriminator(MicroServerComs):
                     h[0] == RAISDiscriminator.HIST_LOST_SIGNAL:
                 # Currently favored channel is suspect. See if there's another better
                 rootlogger.debug ("Reevaluating input for channel %s"%channel)
+                
                 options = [(self.score_history(ad, channel) +
                             self.score_variance (d, ad, median), ad)
-                                    for ad in self.history[channel].keys()]
-                options.sort(reverse=True)  # Descending scores, first is best
-                if self.favored_channel[channel] != options[0][1]:
-                    self.favored_channel[channel] = options[0][1]
-                    rootlogger.warning ("RAISDiscriminator: change favored input pipeline %s for %s"%(
-                                self.favored_channel[channel], channel))
+                                    for ad in self.history[channel].keys()
+                                    if self.get_latest_history(ad, channel) != \
+                                            RAISDiscriminator.HIST_LOST_SIGNAL
+                                    ]
+                if len(options) > 0:
+                    options.sort(reverse=True)  # Descending scores, first is best
+                    if self.favored_channel[channel] != options[0][1]:
+                        self.favored_channel[channel] = options[0][1]
+                        rootlogger.warning ("RAISDiscriminator: change favored input pipeline %s for %s"%(
+                                    self.favored_channel[channel], channel))
 
     def score_history (self, idx, channel):
         ret = 0.0

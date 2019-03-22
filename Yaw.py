@@ -15,6 +15,7 @@
 
 
 from MicroServerComs import MicroServerComs
+from Common.util import rate_curve
 
 class Yaw(MicroServerComs):
     def __init__(self, accelerometer_calibration, accel_factor):
@@ -26,8 +27,8 @@ class Yaw(MicroServerComs):
     def updated(self, channel):
         if channel == 'accelerometers':
             if isinstance(self.accelerometer_calibration, dict):
-                self.a_x = util.rate_curve (self.a_x,
-                        self.accelerometer_calibration['x'])
+                self.a_x = rate_curve (self.a_x,
+                        self.accelerometer_calibration['x'], False)
             self.a_x += self.xoffset
             self.yaw = self.a_x * self.accel_factor
             self.timestamp = self.accelerometers_updated

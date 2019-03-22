@@ -13,7 +13,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
+import math
 
+import Common.util as util
 import Globals
 from MicroServerComs import MicroServerComs
 
@@ -29,13 +31,18 @@ class Pitch(MicroServerComs):
         # Default 1 degree per minute
         self.correction_rate = cor_rate / 60.0
         self.confidence_multiplier = conf_mult
+        self.roll = 0
 
     def updated(self, channel):
         if channel == 'rotationsensors':
             if self.last_time and self.flight_mode != Globals.FLIGHT_MODE_GROUND:
                 timediff = self.rotationsensors_updated - self.last_time
                 correction_factor = self.correction_rate * timediff
-                self.pitch += (self.r_x * timediff)
+                roll = 0
+                if self.roll is not None and \
+                        self.Roll_updated - self.rotationsensors_updated < .4:
+                    roll = self.roll * util.RAD_DEG
+                self.pitch += (self.r_x * timediff * math.cos(roll))
                 self.pitch_confidence = 7.0
                 if self.pitch_estimate is not None and (not self.vertical):
                     # Use pitch estimate to correct and evaluate
@@ -59,7 +66,13 @@ class Pitch(MicroServerComs):
             if self.command.startswith( b'fmode'):
                 args = self.args.split()
                 self.flight_mode = args[0].decode('utf8')
-                self.vertical = bool(args[1].strip(b'\x00'))
+                self.vertical = bool(int(args[1].strip(b'\x00')))
+                print ("******** Pitch New flight mode %s (%s->%s)"%(self.flight_mode,
+                    args[1].strip(b'\x00').decode('utf8'), str(self.vertical)))
+        elif channel == 'admincommand':
+            if self.command.startswith( b'corrfctr'):
+                self.correction_rate = float(self.args.strip(b'\x00')) / 60.0
+                print ("******* New Pitch Correction rate %.4f"%self.correction_rate)
 
 
 if __name__ == "__main__":

@@ -58,7 +58,11 @@ class Roll(MicroServerComs):
             if self.command.startswith( b'fmode'):
                 args = self.args.split()
                 self.flight_mode = args[0].decode('utf8')
-                self.vertical = bool(args[1].strip(b'\x00'))
+                self.vertical = bool(int(args[1].strip(b'\x00')))
+        elif channel == 'admincommand':
+            if self.command.startswith( b'corrfctr'):
+                self.correction_rate = float(self.args.strip(b'\x00')) / 60.0
+                print ("******* New Roll Correction rate %.4f"%self.correction_rate)
 
 
 if __name__ == "__main__":

@@ -36,5 +36,5 @@ sensors:
         secondary_filter_duration: 30
 ado: 0
 cal:
-    rotation: [collect, 100, respond_heading]
+    rotation: [collect, 100, 0.5, 0.5, respond_heading]
     magnetic: [rotation,20,60.,30.]

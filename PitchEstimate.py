@@ -23,22 +23,29 @@ class PitchEstimate(MicroServerComs):
         self.accelerometer_calibration = accelerometer_calibration
         MicroServerComs.__init__(self, "PitchEstimate")
         self.yoffset = 0
+        self.roll = None
 
     def updated(self, channel):
         if channel == 'accelerometers':
             if self.a_z != 0:
                 if isinstance(self.accelerometer_calibration, dict):
                     self.a_y = util.rate_curve (self.a_y,
-                            self.accelerometer_calibration['y'])
+                            self.accelerometer_calibration['y'], False)
                     self.a_z = util.rate_curve (self.a_z,
-                            self.accelerometer_calibration['z'])
+                            self.accelerometer_calibration['z'], False)
                 self.a_y += self.yoffset
-                self.pitch_estimate = math.atan(float(self.a_y) / float(self.a_z)) * \
-                        util.DEG_RAD
+                roll = 0
+                if self.roll is not None and \
+                        self.Roll_updated - self.accelerometers_updated < .4:
+                    roll = self.roll * util.RAD_DEG
+                self.pitch_estimate = math.atan(self.a_y /
+                        (self.a_z*math.cos(roll)))
+                self.pitch_estimate *= util.DEG_RAD
                 self.timestamp = self.accelerometers_updated
                 self.publish ()
-                print ("PitchEstimate: %d,%d => %g"%(self.a_z, self.a_y, self.pitch_estimate))
-        elif channel == 'systemcommand':
+                print ("PitchEstimate: roll(%.1f) %.2f,%.2f,%.2f => %.2f"%(roll, 
+                    self.a_x, self.a_y, self.a_z, self.pitch_estimate))
+        elif channel == 'systemcommand' and hasattr(self, 'a_y'):
             if self.command.startswith( b'0att'):
                 self.yoffset = -self.a_y
 

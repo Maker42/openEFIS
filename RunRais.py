@@ -18,6 +18,22 @@ import sys, time
 import subprocess
 import yaml
 
+def get_calibrations(i, accel_calibrations, magnet_calibrations,
+        pressure_calibrations, airspeed_calibrations):
+    a = None
+    if len(accel_calibrations) > i:
+        a = accel_calibrations[i]
+    m = None
+    if len(magnet_calibrations) > i:
+        m = magnet_calibrations[i]
+    p = None
+    if len(pressure_calibrations) > i:
+        p = pressure_calibrations[i]
+    s = None
+    if len(airspeed_calibrations) > i:
+        s = airspeed_calibrations[i]
+    return [a, m, p, s]
+
 if __name__ == "__main__":
     with open (sys.argv[1], 'r') as yml:
         config = yaml.load(yml)
@@ -26,13 +42,25 @@ if __name__ == "__main__":
     port_bases = config['port_bases']
     rais_pubsub = config['rais_pubsub']
     rais_port = config['rais_port']
+    accel_calibrations = list()
+    if 'accel_calibrations' in config:
+        accel_calibrations = config['accel_calibrations']
+    magnet_calibrations = list()
+    if 'magnet_calibrations' in config:
+        magnet_calibrations = config['magnet_calibrations']
+    pressure_calibrations = list()
+    if 'pressure_calibrations' in config:
+        pressure_calibrations = config['pressure_calibrations']
+    airspeed_calibrations = list()
+    if 'airspeed_calibrations' in config:
+        airspeed_calibrations = config['airspeed_calibrations']
     python = '/usr/bin/python3' if 'python' not in config else config['python']
     pubsub = 'PubSub.py' if 'pubsub' not in config else config['pubsub']
     runms = 'RunMicroServices.py' if 'runms' not in config else config['runms']
     rais = 'RAISDiscriminator.py' if 'rais' not in config else config['rais']
     pubsub_processes = list()
     ms_processes = list()
-    for p in port_bases:
+    for i,p in enumerate(port_bases):
         args = [python, pubsub, pubsub_file, str(p)]
         print ("Spawning: %s"%str(args))
         proc = subprocess.Popen (args,
@@ -40,6 +68,12 @@ if __name__ == "__main__":
         pubsub_processes.append(proc)
 
         args = [python, runms, str(p), '-p', pubsub_file]
+        cals = get_calibrations(i, accel_calibrations, magnet_calibrations,
+                pressure_calibrations, airspeed_calibrations)
+        for arg_prefix,arg in zip(['-c', '-m', '-r', '-a'], cals):
+            if arg is not None:
+                args.append(arg_prefix)
+                args.append(arg)
         print ("Spawning: %s"%str(args))
         proc = subprocess.Popen (args,
                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL)

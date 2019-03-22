@@ -24,7 +24,7 @@ import threading
 
 import Airplane, Globals
 
-import fix
+import pyavtools.fix as fix
 
 args = None
 wpchanged_time = None
@@ -296,12 +296,14 @@ def thread_run( selected_altitude
                          ,selected_pitch
                          ,selected_glideslope)
 
+    ap_on_db = fix.db.get_item(Globals.AP_ON_KEY)
     while run_fms:
-        attitude = craft.Update()
-        if isinstance(attitude,tuple):
-            pitch,roll = attitude
-            pitchdb.value = pitch
-            rolldb.value = roll
+        if ap_on_db.value:
+            attitude = craft.Update()
+            if isinstance(attitude,tuple):
+                pitch,roll = attitude
+                pitchdb.value = pitch
+                rolldb.value = roll
         if send_back_sensors:
             sensors_to_fix(sensors)
         time.sleep(.1)

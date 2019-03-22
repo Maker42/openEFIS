@@ -20,7 +20,7 @@ import Globals
 import Common.util as util
 
 import SenseControl, CommandControl
-import Xplane, FixSensors
+import Xplane
 import SurfaceControl, AttitudeControl, FlightControl, AttitudeControlVTOL, GroundControl
 import TakeoffControlVTOL, LandingControlVTOL, AttitudeVTOLEstimation
 import MiddleEngineTiltControl, VTOLYawControl, SolenoidControl, ThrottleControl
@@ -624,10 +624,10 @@ class Airplane(FileConfig.FileConfig):
         return self._return_state
 
     def ChangeMode(self, newmode):
-        logger.debug ("Change mode from %s to %s", self.CurrentFlightMode, newmode)
-        self._sensors.FlightMode(self.CurrentFlightMode,
-                True if isinstance(self._takeoff_control,TakeoffControlVTOL.TakeoffControlVTOL)
-                     else False)
+        vertical = isinstance(self._takeoff_control,TakeoffControlVTOL.TakeoffControlVTOL)
+        logger.debug ("Change mode from %s to %s vertical %s",
+                self.CurrentFlightMode, newmode, str(vertical))
+        self._sensors.FlightMode(self.CurrentFlightMode, 1 if vertical else 0)
         if self.CurrentFlightMode == newmode:
             return
 

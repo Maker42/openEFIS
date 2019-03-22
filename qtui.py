@@ -24,7 +24,7 @@ except:
 import os, time, glob
 import logging
 
-import fix
+import pyavtools.fix as fix
 
 import Globals
 
