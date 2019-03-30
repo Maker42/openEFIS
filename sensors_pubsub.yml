@@ -314,6 +314,7 @@ PressureFactors:
       - {protocol: internal, function: WindEstimate}
       - {protocol: internal, function: AltitudeComputed}
       - {protocol: internal, function: RollEstimate}
+      - {protocol: internal, function: Airspeed}
 
 
 #
@@ -397,8 +398,9 @@ Airspeed:
         - timestamp
         - airspeed_is_estimated
         - airspeed
+        - tas
         - airspeed_confidence
-    format: diff
+    format: difff
     pubs:
       - {addr: localhost, protocol: udp, function: Airspeed}
     subs:

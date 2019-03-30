@@ -45,6 +45,7 @@ class RAISDiscriminator(MicroServerComs):
         self.Altitude_updated = dict()
         self.Altitude_updated_local_time = dict()
         self.airspeed = dict()
+        self.tas = dict()
         self.airspeed_confidence = dict()
         self.airspeed_is_estimated = dict()
         self.Airspeed_updated = dict()

@@ -24,6 +24,8 @@ class Airspeed(MicroServerComs):
         self.airspeed_computed = None
         self.airspeed_is_estimated = True
         self.airspeed_confidence = 0.0
+        self.cas2tas = None
+        self.tas = None
         # Default 1 degree per minute
         self.confidence_multiplier = conf_mult
 
@@ -46,6 +48,10 @@ class Airspeed(MicroServerComs):
                 self.airspeed_is_estimated = True
                 update = True
         if update:
+            if self.cas2tas is not None:
+                self.tas = self.airspeed * self.cas2tas
+            else:
+                self.tas = 0
             self.publish ()
             print ("Airspeed: %.1f(%.1f)"%(self.airspeed, self.airspeed_confidence))
 
