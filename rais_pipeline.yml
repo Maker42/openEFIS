@@ -3,3 +3,4 @@ port_bases: [48200, 48400, 48500]
 rais_pubsub: rais_output.yml
 rais_port: 48600
 accel_calibrations: [accel_cal_48200.yml, null, null]
+alat_multipliers: ['.102', '1.0', '1.0']

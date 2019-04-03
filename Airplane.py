@@ -613,7 +613,7 @@ class Airplane(FileConfig.FileConfig):
         elif self.CurrentFlightMode == Globals.FLIGHT_MODE_GROUND:
             if self._ground_control is not None: self._ground_control.Update()
             airspeed = self._sensors.AirSpeed()
-            if airspeed is None and airspeed > self.StallSpeed:
+            if airspeed is not None and airspeed > self.StallSpeed:
                 self.ChangeMode(Globals.FLIGHT_MODE_AIRBORN)
         elif self.CurrentFlightMode == Globals.FLIGHT_MODE_LANDING:
             if self._landing_control is not None: self._landing_control.Update()
@@ -625,7 +625,7 @@ class Airplane(FileConfig.FileConfig):
 
     def ChangeMode(self, newmode):
         vertical = isinstance(self._takeoff_control,TakeoffControlVTOL.TakeoffControlVTOL)
-        logger.debug ("Change mode from %s to %s vertical %s",
+        logger.info ("Change flight mode from %s to %s vertical %s",
                 self.CurrentFlightMode, newmode, str(vertical))
         self._sensors.FlightMode(self.CurrentFlightMode, 1 if vertical else 0)
         if self.CurrentFlightMode == newmode:

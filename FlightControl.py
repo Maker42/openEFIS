@@ -632,13 +632,14 @@ class FlightControl(FileConfig.FileConfig):
                                   self.Waypoints[self._next_waypoint]]
             self._flight_mode = SUBMODE_COURSE
             self._starting = False
-            print ("fc nwp: %s"%str(self.DesiredCourse))
+            #print ("fc nwp: %s"%str(self.DesiredCourse))
             if self.WPAltitudes[self._previous_waypoint] != self.WPAltitudes[self._next_waypoint] and \
                     self.AltitudeSource == self.ALT_SOURCE_FLIGHT_PLAN:
-                print ("fc nwp: alt %g"%self.WPAltitudes[self._next_waypoint])
+                #print ("fc nwp: alt %g"%self.WPAltitudes[self._next_waypoint])
                 self.DesiredAltitude = self.WPAltitudes[self._next_waypoint]
             else:
-                print ("fc nwp: no alt change")
+                pass
+                #print ("fc nwp: no alt change")
         return "WP %d"%self._next_waypoint
 
     def SetWaypointNumber(self, wpnum):

@@ -19,7 +19,7 @@ import subprocess
 import yaml
 
 def get_calibrations(i, accel_calibrations, magnet_calibrations,
-        pressure_calibrations, airspeed_calibrations):
+        pressure_calibrations, airspeed_calibrations, alat_multipliers):
     a = None
     if len(accel_calibrations) > i:
         a = accel_calibrations[i]
@@ -32,7 +32,10 @@ def get_calibrations(i, accel_calibrations, magnet_calibrations,
     s = None
     if len(airspeed_calibrations) > i:
         s = airspeed_calibrations[i]
-    return [a, m, p, s]
+    y = None
+    if len(alat_multipliers) > i:
+        y = alat_multipliers[i]
+    return [a, m, p, s, y]
 
 if __name__ == "__main__":
     with open (sys.argv[1], 'r') as yml:
@@ -43,6 +46,7 @@ if __name__ == "__main__":
     rais_pubsub = config['rais_pubsub']
     rais_port = config['rais_port']
     accel_calibrations = list()
+    alat_multipliers = list()
     if 'accel_calibrations' in config:
         accel_calibrations = config['accel_calibrations']
     magnet_calibrations = list()
@@ -54,6 +58,8 @@ if __name__ == "__main__":
     airspeed_calibrations = list()
     if 'airspeed_calibrations' in config:
         airspeed_calibrations = config['airspeed_calibrations']
+    if 'alat_multipliers' in config:
+        alat_multipliers = config['alat_multipliers']
     python = '/usr/bin/python3' if 'python' not in config else config['python']
     pubsub = 'PubSub.py' if 'pubsub' not in config else config['pubsub']
     runms = 'RunMicroServices.py' if 'runms' not in config else config['runms']
@@ -69,8 +75,8 @@ if __name__ == "__main__":
 
         args = [python, runms, str(p), '-p', pubsub_file]
         cals = get_calibrations(i, accel_calibrations, magnet_calibrations,
-                pressure_calibrations, airspeed_calibrations)
-        for arg_prefix,arg in zip(['-c', '-m', '-r', '-a'], cals):
+                pressure_calibrations, airspeed_calibrations, alat_multipliers)
+        for arg_prefix,arg in zip(['-c', '-m', '-r', '-a', '-y'], cals):
             if arg is not None:
                 args.append(arg_prefix)
                 args.append(arg)
