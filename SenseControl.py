@@ -206,7 +206,7 @@ class Sensors(MicroServerComs):
 
     def Position(self):
         self.listen (timeout=0, loop=False)
-        return (self.gps_lat, self.gps_lng)
+        return (self.gps_lng, self.gps_lat)
 
     def GPSSignalQuality(self):
         return self.gps_signal_quality

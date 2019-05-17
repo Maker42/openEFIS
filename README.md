@@ -46,7 +46,7 @@ does not control brakes.
 
 Display an EFIS with real sensors
 ---------------------------------------------------------------
-Software Dependencies: pyyaml, pyserial
+Software Dependencies: pyyaml, pyserial, geomag
 Hardware Dependencies: An Arduino Mega with something like an Adafruit 10DOF
                        sensor board on the I2C bus, and a GPS on an alternate
                        serial port. Modify sensors.yml as necessary.
@@ -66,18 +66,6 @@ Then invoke:
 PubSub.py
 SenseControlRemote.py <USBport>
 RunMicroServers.py
-```
-If you have no pitot tube with a seperate pressure sensor, the sensor processing
-subsystem needs current winds to estimate the airspeed.
-In any case, the sensor processing subsystem needs at least a barometric pressure
-reading to properly compute altitude. To do this:
-```
-SendATISInfo.py # See argument options with the -h command line option
-```
-
-Then finally run:
-```
-Display.py
 ```
 
 Alternatively, you can add a black box event recorder by running sensor processing and

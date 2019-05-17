@@ -333,13 +333,13 @@ def sensors_to_fix(sensors):
     ROLL.bad = True if ROLL_conf < BAD_THRESHOLD else False
     ROLL.fail = True if ROLL_conf < FAIL_THRESHOLD else False
     ROLL.old = False
-    YAW = fix.db.get_item("YAW")
+    YAW = fix.db.get_item("ALAT")
     YAW.value = sensors.Yaw()
     YAW_conf = sensors.YawConfidence()
     YAW.bad = True if YAW_conf < BAD_THRESHOLD else False
     YAW.fail = True if YAW_conf < FAIL_THRESHOLD else False
     YAW.old = False
-    lat,lng = sensors.Position()
+    lng,lat = sensors.Position()
     if lng is not None:
         gsq = sensors.GPSSignalQuality()
         LAT = fix.db.get_item("LAT")
@@ -388,6 +388,12 @@ def sensors_to_fix(sensors):
     HEAD.bad = True if HEAD_conf < BAD_THRESHOLD else False
     HEAD.fail = True if HEAD_conf < FAIL_THRESHOLD else False
     HEAD.old = False
+    ROT = fix.db.get_item("ROT")
+    ROT.value = sensors.HeadingRateChange()
+    ROT_conf = sensors.HeadingRateChangeConfidence()
+    ROT.bad = True if ROT_conf < BAD_THRESHOLD else False
+    ROT.fail = True if ROT_conf < FAIL_THRESHOLD else False
+    ROT.old = False
 
     baro = fix.db.get_item("BARO").value
     if last_baro_time+BARO_UPDATE_PERIOD < time.time() or baro != last_baro:
